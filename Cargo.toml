@@ -1,0 +1,6 @@
+[workspace]
+members = ["programs/donatrade_program"]
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
