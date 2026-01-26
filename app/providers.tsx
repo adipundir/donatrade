@@ -11,6 +11,13 @@ import '@solana/wallet-adapter-react-ui/styles.css';
 
 import { ThemeProvider } from 'next-themes';
 
+import { VaultProvider } from '@/components/VaultProvider';
+
+// Browser polyfills for Anchor/Buffer
+if (typeof window !== 'undefined') {
+  window.Buffer = window.Buffer || require('buffer').Buffer;
+}
+
 interface ProvidersProps {
   children: ReactNode;
 }
@@ -37,7 +44,9 @@ export const Providers: FC<ProvidersProps> = ({ children }) => {
       <ConnectionProvider endpoint={endpoint}>
         <WalletProvider wallets={wallets} autoConnect>
           <WalletModalProvider>
-            {children}
+            <VaultProvider>
+              {children}
+            </VaultProvider>
           </WalletModalProvider>
         </WalletProvider>
       </ConnectionProvider>

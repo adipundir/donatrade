@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Rust / Anchor
+target/
+.anchor/
+test-ledger/
+node_modules/
+dist/
+.DS_Store
+*.swp
+*.bak
+dump.json

@@ -1,6 +1,11 @@
 [workspace]
 members = ["programs/donatrade_program"]
+resolver = "2"
 
 [profile.release]
 overflow-checks = true
 lto = "fat"
+
+[patch.crates-io]
+constant_time_eq = { path = "programs/donatrade_program/constant_time_eq_local" }
+blake3 = { path = "programs/donatrade_program/blake3_local" }

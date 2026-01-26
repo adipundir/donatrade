@@ -23,7 +23,7 @@ export const ThemeToggle = () => {
     return (
         <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="btn btn-secondary p-2 px-3 flex items-center gap-2"
+            className="btn btn-secondary h-10 px-3 flex items-center gap-2"
             aria-label="Toggle theme"
         >
             {theme === 'dark' ? (

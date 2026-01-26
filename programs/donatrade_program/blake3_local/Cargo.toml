@@ -1,0 +1,6 @@
+[package]
+name = "blake3"
+version = "1.5.0"
+edition = "2021"
+[lib]
+path = "src/lib.rs"

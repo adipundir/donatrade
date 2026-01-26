@@ -1,9 +1,13 @@
+[toolchain]
+anchor_version = "0.31.1"
+
 [features]
-seeds = false
+resolution = true
 skip-lint = false
 
 [programs.devnet]
-donatrade_program = "DonaTrD1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+donatrade_program = "9MBsFdzmTYU93kDseX9mczoYPChfaoSMU3uS9tu5e4ax"
+inco_lightning = "5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj"
 
 [registry]
 url = "https://api.apr.dev"

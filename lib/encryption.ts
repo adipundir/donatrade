@@ -1,64 +1,50 @@
-/**
- * Client-side encryption utilities for Donatrade.
- * 
- * These functions mirror the mock encryption in the on-chain program.
- * 
- * INCO INTEGRATION NOTES:
- * ----------------------
- * In production with INCO Lightning, these functions would be replaced with:
- * 
- * 1. `encrypt(value)` -> Would call INCO's client SDK to encrypt the value
- *    using a shared key derived from the investor and company public keys.
- *    The encryption happens client-side but uses INCO's key management.
- * 
- * 2. `decrypt(encrypted)` -> Would call INCO's client SDK to request decryption.
- *    This would require proving ownership (signing a message) and INCO would
- *    return the decrypted value only if the caller is authorized.
- * 
- * The current implementation uses simple XOR encryption for demo purposes.
- * This is NOT secure - it's purely to demonstrate the privacy architecture.
- */
-
-// Mock encryption key (same as on-chain program)
-const MOCK_KEY = [0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE];
+import { decrypt } from '@inco/solana-sdk/attested-decrypt';
 
 /**
- * Encrypts a number into bytes using mock XOR encryption.
- * 
- * INCO: Replace with inco.encrypt(value) in production.
+ * Client-side encryption utilities for Donatrade using Inco Lightning FHE.
  */
-export function mockEncrypt(value: number): number[] {
-    // Convert to 8-byte little-endian representation
-    const buffer = new ArrayBuffer(8);
-    const view = new DataView(buffer);
-    view.setBigUint64(0, BigInt(value), true); // little-endian
 
-    const bytes = new Uint8Array(buffer);
-    const encrypted: number[] = [];
-
-    for (let i = 0; i < 8; i++) {
-        encrypted.push(bytes[i] ^ MOCK_KEY[i % MOCK_KEY.length]);
+/**
+ * Converts a 16-byte EUINT128 handle (from the contract) to a decimal string.
+ * The Inco SDK requires handles as decimal strings for decryption requests.
+ */
+export function bytesToHandle(bytes: number[]): string {
+    if (!bytes || bytes.length !== 16) {
+        console.warn("[Encryption] Invalid handle bytes length:", bytes?.length);
+        return "0";
     }
 
-    return encrypted;
+    // handles are u128 little-endian
+    let handle = BigInt(0);
+    for (let i = 15; i >= 0; i--) {
+        handle = handle * BigInt(256) + BigInt(bytes[i]);
+    }
+    return handle.toString();
 }
 
 /**
- * Decrypts bytes back to a number using mock XOR decryption.
- * 
- * INCO: Replace with inco.decrypt(encrypted) in production.
- * The INCO version would require authorization/attestation.
+ * Decrypts an FHE handle via Inco's Attested Reveal.
+ * Requires the user to sign a message via their wallet.
  */
-export function mockDecrypt(encrypted: number[]): number {
-    if (encrypted.length < 8) return 0;
-
-    const bytes = new Uint8Array(8);
-    for (let i = 0; i < 8; i++) {
-        bytes[i] = encrypted[i] ^ MOCK_KEY[i % MOCK_KEY.length];
+export async function decryptHandle(handleStr: string, wallet: any): Promise<bigint | null> {
+    if (!wallet || !wallet.publicKey || !wallet.signMessage) {
+        throw new Error("Wallet does not support message signing for decryption.");
     }
 
-    const view = new DataView(bytes.buffer);
-    return Number(view.getBigUint64(0, true));
+    try {
+        const result = await decrypt([handleStr], {
+            address: wallet.publicKey,
+            signMessage: wallet.signMessage,
+        });
+
+        if (result && result.plaintexts && result.plaintexts.length > 0) {
+            return BigInt(result.plaintexts[0]);
+        }
+        return null;
+    } catch (error) {
+        console.error("[Encryption] Decryption failed:", error);
+        throw error;
+    }
 }
 
 /**
