@@ -1,5 +1,7 @@
 'use client';
 
+import "@/lib/buffer-polyfill";
+
 import { FC, ReactNode, useMemo } from 'react';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
@@ -13,10 +15,7 @@ import { ThemeProvider } from 'next-themes';
 
 import { VaultProvider } from '@/components/VaultProvider';
 
-// Browser polyfills for Anchor/Buffer
-if (typeof window !== 'undefined') {
-  window.Buffer = window.Buffer || require('buffer').Buffer;
-}
+
 
 interface ProvidersProps {
   children: ReactNode;

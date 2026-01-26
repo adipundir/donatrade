@@ -3,22 +3,22 @@ export const IDL = {
     "name": "donatrade_program",
     "instructions": [
         {
-            "name": "initializeGlobalVault",
+            "name": "initialize_global_vault",
             "accounts": [
-                { "name": "admin", "isMut": true, "isSigner": true },
-                { "name": "globalVault", "isMut": true, "isSigner": false },
-                { "name": "usdcTokenAccount", "isMut": false, "isSigner": false },
-                { "name": "systemProgram", "isMut": false, "isSigner": false }
+                { "name": "admin", "writable": true, "signer": true },
+                { "name": "globalVault", "writable": true, "signer": false, "type": "globalProgramVault" },
+                { "name": "usdcTokenAccount", "writable": false, "signer": false },
+                { "name": "systemProgram", "writable": false, "signer": false }
             ],
             "args": []
         },
         {
-            "name": "createCompany",
+            "name": "create_company",
             "accounts": [
-                { "name": "admin", "isMut": true, "isSigner": true },
-                { "name": "companyAdmin", "isMut": false, "isSigner": false },
-                { "name": "companyAccount", "isMut": true, "isSigner": false },
-                { "name": "systemProgram", "isMut": false, "isSigner": false }
+                { "name": "admin", "writable": true, "signer": true },
+                { "name": "companyAdmin", "writable": false, "signer": false },
+                { "name": "companyAccount", "writable": true, "signer": false, "type": "companyAccount" },
+                { "name": "systemProgram", "writable": false, "signer": false }
             ],
             "args": [
                 { "name": "companyId", "type": "u64" },
@@ -29,75 +29,75 @@ export const IDL = {
         {
             "name": "deposit",
             "accounts": [
-                { "name": "investor", "isMut": true, "isSigner": true },
-                { "name": "investorVault", "isMut": true, "isSigner": false },
-                { "name": "investorTokenAccount", "isMut": true, "isSigner": false },
-                { "name": "vaultTokenAccount", "isMut": true, "isSigner": false },
-                { "name": "incoLightningProgram", "isMut": false, "isSigner": false },
-                { "name": "tokenProgram", "isMut": false, "isSigner": false },
-                { "name": "systemProgram", "isMut": false, "isSigner": false }
+                { "name": "investor", "writable": true, "signer": true },
+                { "name": "investorVault", "writable": true, "signer": false, "type": "investorVault" },
+                { "name": "investorTokenAccount", "writable": true, "signer": false },
+                { "name": "vaultTokenAccount", "writable": true, "signer": false },
+                { "name": "incoLightningProgram", "writable": false, "signer": false },
+                { "name": "tokenProgram", "writable": false, "signer": false },
+                { "name": "systemProgram", "writable": false, "signer": false }
             ],
             "args": [{ "name": "amount", "type": "u64" }]
         },
         {
             "name": "withdraw",
             "accounts": [
-                { "name": "investor", "isMut": true, "isSigner": true },
-                { "name": "investorVault", "isMut": true, "isSigner": false },
-                { "name": "globalVault", "isMut": false, "isSigner": false },
-                { "name": "investorTokenAccount", "isMut": true, "isSigner": false },
-                { "name": "vaultTokenAccount", "isMut": true, "isSigner": false },
-                { "name": "incoLightningProgram", "isMut": false, "isSigner": false },
-                { "name": "tokenProgram", "isMut": false, "isSigner": false },
-                { "name": "systemProgram", "isMut": false, "isSigner": false }
+                { "name": "investor", "writable": true, "signer": true },
+                { "name": "investorVault", "writable": true, "signer": false, "type": "investorVault" },
+                { "name": "globalVault", "writable": false, "signer": false, "type": "globalProgramVault" },
+                { "name": "investorTokenAccount", "writable": true, "signer": false },
+                { "name": "vaultTokenAccount", "writable": true, "signer": false },
+                { "name": "incoLightningProgram", "writable": false, "signer": false },
+                { "name": "tokenProgram", "writable": false, "signer": false },
+                { "name": "systemProgram", "writable": false, "signer": false }
             ],
             "args": [{ "name": "amount", "type": "u64" }]
         },
         {
             "name": "buyShares",
             "accounts": [
-                { "name": "investor", "isMut": true, "isSigner": true },
-                { "name": "investorVault", "isMut": true, "isSigner": false },
-                { "name": "companyAccount", "isMut": true, "isSigner": false },
-                { "name": "position", "isMut": true, "isSigner": false },
-                { "name": "incoLightningProgram", "isMut": false, "isSigner": false },
-                { "name": "systemProgram", "isMut": false, "isSigner": false }
+                { "name": "investor", "writable": true, "signer": true },
+                { "name": "investorVault", "writable": true, "signer": false, "type": "investorVault" },
+                { "name": "companyAccount", "writable": true, "signer": false, "type": "companyAccount" },
+                { "name": "position", "writable": true, "signer": false, "type": "positionAccount" },
+                { "name": "incoLightningProgram", "writable": false, "signer": false },
+                { "name": "systemProgram", "writable": false, "signer": false }
             ],
             "args": [{ "name": "shareAmount", "type": "u64" }]
         },
         {
             "name": "sellShares",
             "accounts": [
-                { "name": "investor", "isMut": true, "isSigner": true },
-                { "name": "investorVault", "isMut": true, "isSigner": false },
-                { "name": "companyAccount", "isMut": true, "isSigner": false },
-                { "name": "position", "isMut": true, "isSigner": false },
-                { "name": "incoLightningProgram", "isMut": false, "isSigner": false },
-                { "name": "systemProgram", "isMut": false, "isSigner": false }
+                { "name": "investor", "writable": true, "signer": true },
+                { "name": "investorVault", "writable": true, "signer": false, "type": "investorVault" },
+                { "name": "companyAccount", "writable": true, "signer": false, "type": "companyAccount" },
+                { "name": "position", "writable": true, "signer": false, "type": "positionAccount" },
+                { "name": "incoLightningProgram", "writable": false, "signer": false },
+                { "name": "systemProgram", "writable": false, "signer": false }
             ],
             "args": [{ "name": "shareAmount", "type": "u64" }]
         }
     ],
     "accounts": [
         {
-            "name": "InvestorVault",
+            "name": "investorVault",
             "type": {
                 "kind": "struct",
                 "fields": [
                     { "name": "owner", "type": "pubkey" },
-                    { "name": "cusd", "type": { "defined": "Euint128" } },
+                    { "name": "cusd", "type": { "defined": "euint128" } },
                     { "name": "bump", "type": "u8" }
                 ]
             }
         },
         {
-            "name": "CompanyAccount",
+            "name": "companyAccount",
             "type": {
                 "kind": "struct",
                 "fields": [
                     { "name": "companyId", "type": "u64" },
                     { "name": "companyAdmin", "type": "pubkey" },
-                    { "name": "cusd", "type": { "defined": "Euint128" } },
+                    { "name": "cusd", "type": { "defined": "euint128" } },
                     { "name": "sharesAvailable", "type": "u64" },
                     { "name": "pricePerShare", "type": "u64" },
                     { "name": "active", "type": "bool" },
@@ -106,19 +106,19 @@ export const IDL = {
             }
         },
         {
-            "name": "PositionAccount",
+            "name": "positionAccount",
             "type": {
                 "kind": "struct",
                 "fields": [
                     { "name": "owner", "type": "pubkey" },
                     { "name": "companyId", "type": "u64" },
-                    { "name": "encryptedShares", "type": { "defined": "Euint128" } },
+                    { "name": "encryptedShares", "type": { "defined": "euint128" } },
                     { "name": "bump", "type": "u8" }
                 ]
             }
         },
         {
-            "name": "GlobalProgramVault",
+            "name": "globalProgramVault",
             "type": {
                 "kind": "struct",
                 "fields": [
@@ -130,7 +130,7 @@ export const IDL = {
     ],
     "types": [
         {
-            "name": "Euint128",
+            "name": "euint128",
             "type": {
                 "kind": "struct",
                 "fields": [
@@ -144,8 +144,5 @@ export const IDL = {
         { "code": 6001, "name": "InsufficientShares", "msg": "Insufficient shares" },
         { "code": 6002, "name": "Overflow", "msg": "Arithmetic overflow" }
     ],
-    "metadata": {
-        "address": "9MBsFdzmTYU93kDseX9mczoYPChfaoSMU3uS9tu5e4ax"
-    },
     "address": "9MBsFdzmTYU93kDseX9mczoYPChfaoSMU3uS9tu5e4ax"
 };

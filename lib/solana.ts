@@ -1,9 +1,4 @@
-// Buffer polyfill for browser environments - MUST be before Anchor imports
-import { Buffer } from 'buffer';
-if (typeof window !== 'undefined') {
-    (window as any).Buffer = Buffer;
-}
-
+import { Buffer } from './buffer-polyfill';
 import { Program, AnchorProvider, BN } from "@coral-xyz/anchor";
 import { Connection, PublicKey, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from "@solana/spl-token";
@@ -84,6 +79,14 @@ export const getProgram = (connection: Connection, wallet: any): Program<any> | 
     if (!wallet || !wallet.publicKey) return null;
 
     try {
+        if (typeof window !== 'undefined') {
+            console.log("[DonaTrade] Buffer status:", {
+                globalBuffer: typeof Buffer !== 'undefined',
+                windowBuffer: typeof (window as any).Buffer !== 'undefined',
+                isBuffer: Buffer.isBuffer(Uint8Array.from([1]))
+            });
+        }
+
         // Force re-instantiation of PublicKey to avoid "Expected Buffer" issues
         const publicKey = new PublicKey(wallet.publicKey.toString());
 
@@ -95,10 +98,17 @@ export const getProgram = (connection: Connection, wallet: any): Program<any> | 
 
         const provider = new AnchorProvider(connection, anchorWallet as any, {
             preflightCommitment: "processed",
+            commitment: "processed",
         });
 
-        const pid = new PublicKey(PROGRAM_ID.toString());
+        const pid = new PublicKey(IDL.address);
         console.log(`[DonaTrade] Initializing program ${pid.toBase58()} with wallet ${publicKey.toBase58()}`);
+
+        // Try creating program with explicit address if IDL metadata fails
+        // Use global Buffer reference to ensure it's available for borsh
+        if (typeof window !== 'undefined' && !(window as any).Buffer) {
+            (window as any).Buffer = Buffer;
+        }
 
         return new Program(IDL as any, provider as any);
     } catch (e: any) {
