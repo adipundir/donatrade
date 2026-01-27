@@ -158,21 +158,22 @@ export default function PortfolioPage() {
                             <h2 className="text-lg font-bold">Confidential Vault</h2>
                         </div>
                         <div className="flex items-baseline gap-2 mb-2">
-                            <span className="text-3xl font-bold">
+                            <span className="text-4xl font-bold tracking-[0.05em]" style={{ fontFamily: "'Bangers', cursive" }}>
                                 {isRevealingVault ? (
                                     <Loader2 className="w-6 h-6 animate-spin text-accent" />
                                 ) : showVaultBalance && vaultBalance !== null
                                     ? formatUSDC(vaultBalance).replace('$', '')
                                     : '🔒 ••••••'}
                             </span>
-                            <span className="text-secondary font-bold">cUSD</span>
+                            <span className="text-secondary font-bold text-sm">cUSD</span>
                         </div>
 
                         {rawVault && (
                             <button
                                 onClick={showVaultBalance ? () => setShowVaultBalance(false) : handleRevealVault}
                                 disabled={isRevealingVault}
-                                className="mt-4 w-full py-2 border-2 border-foreground bg-background hover:bg-surface font-bold uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 transition-all active:translate-y-[2px]"
+                                className="mt-4 w-full py-2 border-3 border-foreground bg-background hover:bg-surface font-bold uppercase tracking-widest text-[12px] flex items-center justify-center gap-2 transition-all active:translate-y-[2px] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none"
+                                style={{ fontFamily: "'Bangers', cursive" }}
                             >
                                 {isRevealingVault ? (
                                     <Loader2 className="w-3 h-3 animate-spin" />

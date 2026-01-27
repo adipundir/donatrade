@@ -21,9 +21,11 @@ export const PrivacyBadge: FC<PrivacyBadgeProps> = ({ variant = 'default' }) => 
     }
 
     return (
-        <div className="badge badge-privacy">
-            <ShieldCheck className="w-3 h-3" />
-            <span>Private</span>
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 border-2 border-[#0066FF] bg-[#EBF3FF] rounded-none shadow-[2px_2px_0px_0px_#0066FF] mb-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-[#0066FF] fill-[#0066FF]/10" />
+            <span className="text-[11px] font-bold text-[#0066FF] uppercase tracking-wider" style={{ fontFamily: "'Bangers', cursive" }}>
+                Private
+            </span>
         </div>
     );
 };

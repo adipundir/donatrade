@@ -120,11 +120,11 @@ export const SharesDisplay: FC<SharesDisplayProps> = ({
                     {isLoading ? (
                         <Loader2 className="w-6 h-6 animate-spin text-accent" />
                     ) : isRevealed ? (
-                        <span className="shares-revealed text-2xl font-bold">
+                        <span className="shares-revealed text-4xl font-bold tracking-[0.05em]" style={{ fontFamily: "'Bangers', cursive" }}>
                             {displayValue}
                         </span>
                     ) : (
-                        <span className="shares-hidden text-2xl flex items-center gap-2 text-muted">
+                        <span className="shares-hidden text-2xl flex items-center gap-2 text-muted" style={{ fontFamily: "'Bangers', cursive" }}>
                             <Lock className="w-5 h-5" />
                             ??????
                         </span>

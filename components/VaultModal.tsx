@@ -300,46 +300,49 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
 
                 {/* Balance Section */}
                 <div className="p-6 bg-surface border-3 border-foreground mb-6 rounded-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-4">
                         <span className="text-xs font-bold uppercase tracking-wider text-secondary">Confidential Balance</span>
+                        <PrivacyBadge />
                     </div>
-                    <div className="flex items-baseline gap-2">
-                        {isLoading ? (
-                            <Loader2 className="w-8 h-8 animate-spin text-accent" />
-                        ) : (
-                            <div className="flex flex-col gap-2 w-full">
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-4xl font-bold">
+
+                    <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-baseline gap-2">
+                            {isLoading ? (
+                                <Loader2 className="w-8 h-8 animate-spin text-accent" />
+                            ) : (
+                                <>
+                                    <span className="text-5xl font-bold tracking-[0.05em]" style={{ fontFamily: "'Bangers', cursive" }}>
                                         {showBalance && balance !== null
                                             ? formatUSDC(balance).replace('$', '')
                                             : '••••••'}
                                     </span>
-                                    <span className="text-secondary font-bold">cUSD</span>
-                                </div>
+                                    <span className="text-secondary font-bold text-sm">cUSD</span>
+                                </>
+                            )}
+                        </div>
 
-                                {rawVault && (
-                                    <button
-                                        type="button"
-                                        onClick={showBalance ? () => setShowBalance(false) : handleDecrypt}
-                                        disabled={isLoading}
-                                        className="mt-4 w-full py-2 border-2 border-foreground bg-background hover:bg-surface font-bold uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 transition-all active:translate-y-[2px]"
-                                    >
-                                        {isLoading ? (
-                                            <Loader2 className="w-3 h-3 animate-spin" />
-                                        ) : showBalance ? (
-                                            <>
-                                                <EyeOff className="w-3 h-3" />
-                                                Hide Balance
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Eye className="w-3 h-3" />
-                                                Reveal cUSD balance
-                                            </>
-                                        )}
-                                    </button>
+                        {rawVault && (
+                            <button
+                                type="button"
+                                onClick={showBalance ? () => setShowBalance(false) : handleDecrypt}
+                                disabled={isLoading}
+                                className="px-4 py-2 border-3 border-foreground bg-background hover:bg-surface font-bold uppercase tracking-widest text-[11px] flex items-center gap-2 transition-all active:translate-y-[2px] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none whitespace-nowrap"
+                                style={{ fontFamily: "'Bangers', cursive" }}
+                            >
+                                {isLoading ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : showBalance ? (
+                                    <>
+                                        <EyeOff className="w-3 h-3" />
+                                        Hide
+                                    </>
+                                ) : (
+                                    <>
+                                        <Eye className="w-3 h-3" />
+                                        Reveal
+                                    </>
                                 )}
-                            </div>
+                            </button>
                         )}
                     </div>
                 </div>
