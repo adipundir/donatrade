@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { PublicKey } from '@solana/web3.js';
 import {
     X,
     Lock,
@@ -11,12 +12,14 @@ import {
     AlertCircle,
     CheckCircle,
     Eye,
-    EyeOff
+    EyeOff,
+    Shield
 } from 'lucide-react';
 import {
     getProgram,
     fetchInvestorVault,
     buildDepositTx,
+    buildAuthorizeDecryptionTx,
     getInvestorVaultPDA,
     getGlobalVaultPDA,
     getAllowancePDA,
@@ -49,16 +52,24 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
     const [showBalance, setShowBalance] = useState(false);
     const [txStatus, setTxStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const [txMessage, setTxMessage] = useState('');
+    const [txSignature, setTxSignature] = useState<string | null>(null);
+    const [needsInit, setNeedsInit] = useState(false);
 
     useEffect(() => {
         if (isOpen && connected && publicKey) {
             refreshBalance();
         }
     }, [isOpen, connected, publicKey]);
+    const handleTabChange = (tab: 'deposit' | 'withdraw') => {
+        setActiveTab(tab);
+        setTxStatus('idle');
+        setTxMessage('');
+        setTxSignature(null);
+    };
 
     const refreshBalance = async () => {
         if (!publicKey) return;
-        setIsLoading(true);
+        // Silent fetch
         try {
             const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions });
             if (program) {
@@ -66,12 +77,9 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                 setRawVault(vault);
 
                 if (vault) {
-                    const handleStr = bytesToHandle(vault.cusd.inner as number[]);
-                    setTxMessage(`Handle: ${handleStr.slice(0, 12)}... (Encrypted)`);
                     setBalance(null); // Encrypted - needs decryption
                 } else {
                     setBalance(BigInt(0));
-                    setTxMessage('No vault found - deposit to create one');
                 }
             }
         } catch (error) {
@@ -86,19 +94,41 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
         setIsLoading(true);
         setTxStatus('idle');
         try {
-            const handleStr = bytesToHandle(rawVault.cusd.inner as number[]);
+            const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions }) as any;
+            if (!program) throw new Error("Program not initialized");
 
-            // Use centralized decryption helper
+            const handleStr = bytesToHandle(rawVault.cusd);
+            const handle = BigInt(handleStr);
+
+            const [allowanceAccount] = getAllowancePDA(handle, publicKey);
+            const accountInfo = await connection.getAccountInfo(allowanceAccount);
+
+            if (!accountInfo) {
+                setTxMessage("Authorizing decryption access...");
+                const authTxBuilder = await buildAuthorizeDecryptionTx(
+                    program,
+                    publicKey,
+                    handle
+                );
+                const authTxSig = await authTxBuilder.rpc();
+                setTxSignature(authTxSig);
+                setTxStatus('success');
+                setTxMessage(`Access granted!`);
+            }
+
+            // Actual decryption
             const decryptedValue = await decryptHandle(handleStr, {
                 publicKey,
-                signMessage,
+                signMessage
             });
 
             if (decryptedValue !== null) {
                 setBalance(decryptedValue);
                 setShowBalance(true);
-                setTxStatus('success');
-                setTxMessage('Balance revealed via Inco Lightning');
+                setTxStatus('idle'); // Clear any status instead of showing success
+            } else {
+                setTxStatus('error');
+                setTxMessage('Decryption failed even after authorization. Please try again.');
             }
         } catch (error: any) {
             console.error("Decryption failed:", error);
@@ -115,9 +145,11 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
 
         setIsActionLoading(true);
         setTxStatus('idle');
+        setTxMessage('');
+        setTxSignature(null);
 
         try {
-            const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions });
+            const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions }) as any;
             if (!program) throw new Error("Program not initialized");
 
             const amountBigInt = BigInt(Math.floor(parseFloat(amount) * 1_000_000));
@@ -126,21 +158,37 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
 
             // For deposit, we also need the global vault's token account
             const [globalVaultConfig] = getGlobalVaultPDA();
-            const configData = await (program.account as any).globalProgramVault.fetch(globalVaultConfig);
-            const vaultTokenAccount = configData.usdcTokenAccount;
+            let vaultTokenAccount;
 
-            // Manual allowance PDA for the handle creation (simplified for demo)
-            const [allowancePDA] = getAllowancePDA(BigInt(Date.now()), publicKey);
+            try {
+                // Check if global vault exists
+                const configData = await (program.account as any).globalProgramVault.fetch(globalVaultConfig);
+                vaultTokenAccount = configData.usdcTokenAccount;
+            } catch (e: any) {
+                console.warn("Global vault info fetch failed:", e);
+                setNeedsInit(true);
+                throw new Error("Platform setup required. Please use the 'Initialize Platform' button below.");
+            }
+
+            // Deterministic handle based on the vault's cUSD data
+            // This assumes rawVault is up-to-date or we fetch it again
+            const currentRawVault = await fetchInvestorVault(program, publicKey);
+            if (!currentRawVault && activeTab === 'withdraw') {
+                throw new Error("No vault found to withdraw from.");
+            }
+            const handleStr = currentRawVault ? bytesToHandle(currentRawVault.cusd) : '0'; // If no vault, handle is 0 for deposit init
+            const handleId = BigInt(handleStr);
+            const [allowancePDA] = getAllowancePDA(handleId, publicKey);
 
             let tx;
             if (activeTab === 'deposit') {
                 tx = await buildDepositTx(
                     program,
                     publicKey,
-                    amountBigInt,
+                    vaultPDA,
                     userUsdc,
                     vaultTokenAccount,
-                    allowancePDA
+                    Math.floor(parseFloat(amount) * 1_000_000)
                 );
             } else {
                 tx = await (program as any).methods
@@ -154,23 +202,74 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                         incoLightningProgram: INCO_LIGHTNING_ID,
                         tokenProgram: TOKEN_PROGRAM_ID,
                         systemProgram: SystemProgram.programId,
-                    })
-                    .remainingAccounts([
-                        { pubkey: allowancePDA, isSigner: false, isWritable: true },
-                        { pubkey: publicKey, isSigner: false, isWritable: false },
-                    ]);
+                    });
             }
+
+
 
             const signature = await tx.rpc();
 
+            setTxSignature(signature);
             setTxStatus('success');
-            setTxMessage(`Successfully ${activeTab}ed ${amount} cUSD. Sig: ${signature.slice(0, 8)}...`);
+            setTxMessage(`Transaction confirmed!`);
             setAmount('');
             refreshBalance();
         } catch (error: any) {
             console.error("Transaction failed:", error);
             setTxStatus('error');
-            setTxMessage(`Transaction failed: ${error.message || 'Check your balance.'}`);
+            const msg = error.message || 'Check your balance.';
+            setTxMessage(`Transaction failed: ${msg}`);
+
+            if (msg.includes("Platform setup required")) {
+                setNeedsInit(true);
+            }
+        } finally {
+            setIsActionLoading(false);
+        }
+    };
+
+    const handleInitialize = async () => {
+        if (!publicKey) return;
+        setIsActionLoading(true);
+        try {
+            const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions }) as any;
+            if (!program) throw new Error("Program not initialized");
+
+            const [globalVaultConfig] = getGlobalVaultPDA();
+            const vaultTokenAccount = await getAssociatedTokenAddress(publicKey); // Use admin/user ATA as placeholder if needed, but really we need a PDA ATA. 
+            // Actually, the vault token account should be owned by the PDA.
+            // We can create it in the same tx or separate.
+            // Client side creation of PDA ATA is tricky without multiple signers if needed.
+            // But 'createAssociatedTokenAccountInstruction' works if we pay.
+
+            // 1. Derive ATA for the Global Vault PDA
+            // Associated Token Program ID
+            const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+
+            const [realVaultTokenAccount] = PublicKey.findProgramAddressSync(
+                [globalVaultConfig.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), USDC_MINT.toBuffer()],
+                ASSOCIATED_TOKEN_PROGRAM_ID
+            );
+
+            console.log("Initializing Global Vault with ATA:", realVaultTokenAccount.toBase58());
+
+            const tx = await program.methods
+                .initializeGlobalVault()
+                .accounts({
+                    admin: publicKey,
+                    globalVault: globalVaultConfig,
+                    usdcTokenAccount: realVaultTokenAccount,
+                    systemProgram: SystemProgram.programId,
+                })
+                .rpc();
+
+            setTxSignature(tx);
+            setTxStatus('success');
+            setTxMessage("Platform Initialized! You can now deposit.");
+            setNeedsInit(false);
+        } catch (e: any) {
+            console.error("Init failed:", e);
+            setTxMessage("Init failed: " + e.message);
         } finally {
             setIsActionLoading(false);
         }
@@ -195,21 +294,14 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                         <PrivacyBadge />
                     </div>
                     <p className="text-secondary text-sm" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                        Manage your encrypted cUSD balance safely on-chain.
+                        Manage your confidential balance safely on-chain.
                     </p>
                 </div>
 
                 {/* Balance Section */}
                 <div className="p-6 bg-surface border-3 border-foreground mb-6 rounded-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold uppercase tracking-wider text-secondary">Encrypted Balance</span>
-                        <button
-                            onClick={() => balance !== null && setShowBalance(!showBalance)}
-                            className={`text-secondary hover:text-foreground ${balance === null ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                            title={balance === null ? 'Decrypt balance first' : 'Toggle visibility'}
-                        >
-                            {showBalance && balance !== null ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
+                        <span className="text-xs font-bold uppercase tracking-wider text-secondary">Confidential Balance</span>
                     </div>
                     <div className="flex items-baseline gap-2">
                         {isLoading ? (
@@ -225,37 +317,44 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                                     <span className="text-secondary font-bold">cUSD</span>
                                 </div>
 
-                                {!balance && rawVault && (
+                                {rawVault && (
                                     <button
                                         type="button"
-                                        onClick={handleDecrypt}
-                                        className="mt-2 text-[10px] font-bold uppercase tracking-widest text-accent hover:underline flex items-center gap-1"
+                                        onClick={showBalance ? () => setShowBalance(false) : handleDecrypt}
+                                        disabled={isLoading}
+                                        className="mt-4 w-full py-2 border-2 border-foreground bg-background hover:bg-surface font-bold uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 transition-all active:translate-y-[2px]"
                                     >
-                                        <Lock className="w-3 h-3" />
-                                        Request Confidential Decryption
+                                        {isLoading ? (
+                                            <Loader2 className="w-3 h-3 animate-spin" />
+                                        ) : showBalance ? (
+                                            <>
+                                                <EyeOff className="w-3 h-3" />
+                                                Hide Balance
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Eye className="w-3 h-3" />
+                                                Reveal cUSD balance
+                                            </>
+                                        )}
                                     </button>
                                 )}
                             </div>
                         )}
                     </div>
-                    {rawVault && (
-                        <p className="text-[10px] text-accent mt-4 font-mono truncate opacity-60">
-                            FHE HANDLE: {publicKey?.toBase58().slice(0, 8)}...
-                        </p>
-                    )}
                 </div>
 
                 {/* Tabs */}
                 <div className="flex border-b-3 border-foreground mb-6">
                     <button
-                        onClick={() => setActiveTab('deposit')}
+                        onClick={() => handleTabChange('deposit')}
                         className={`flex-1 py-3 font-bold uppercase tracking-wide transition-colors ${activeTab === 'deposit' ? 'bg-accent text-white' : 'hover:bg-surface'}`}
                     >
                         <ArrowDownToLine className="w-4 h-4 inline mr-2" />
                         Deposit
                     </button>
                     <button
-                        onClick={() => setActiveTab('withdraw')}
+                        onClick={() => handleTabChange('withdraw')}
                         className={`flex-1 py-3 font-bold uppercase tracking-wide transition-colors ${activeTab === 'withdraw' ? 'bg-accent text-white' : 'hover:bg-surface'}`}
                     >
                         <ArrowUpFromLine className="w-4 h-4 inline mr-2" />
@@ -266,7 +365,7 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                 {/* Form */}
                 <form onSubmit={handleAction}>
                     <div className="mb-6">
-                        <label className="block text-xs font-bold uppercase tracking-wide mb-2">Amount (cUSD)</label>
+                        <label className="block text-xs font-bold uppercase tracking-wide mb-2">Amount (USDC)</label>
                         <div className="relative">
                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-secondary font-bold">$</span>
                             <input
@@ -283,8 +382,31 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                     {txStatus !== 'idle' && (
                         <div className={`mb-6 p-3 border-3 flex items-center gap-2 ${txStatus === 'success' ? 'border-success bg-success/10' : 'border-error bg-error/10'}`}>
                             {txStatus === 'success' ? <CheckCircle className="w-5 h-5 text-success" /> : <AlertCircle className="w-5 h-5 text-error" />}
-                            <span className="text-sm font-bold">{txMessage}</span>
+                            <div className="flex flex-col">
+                                <span className="text-sm font-bold">{txMessage}</span>
+                                {txStatus === 'success' && txSignature && (
+                                    <a
+                                        href={`https://explorer.solana.com/tx/${txSignature}?cluster=devnet`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[10px] text-accent hover:underline break-all uppercase tracking-tighter"
+                                    >
+                                        View on Explorer: {txSignature.slice(0, 12)}...
+                                    </a>
+                                )}
+                            </div>
                         </div>
+                    )}
+
+                    {needsInit && (
+                        <button
+                            type="button"
+                            onClick={handleInitialize}
+                            className="btn btn-secondary w-full mb-4"
+                            disabled={isActionLoading}
+                        >
+                            {isActionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "⚠️ Initialize Platform (One-Time)"}
+                        </button>
                     )}
 
                     <button
@@ -292,13 +414,13 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                         disabled={isActionLoading || !amount}
                         className="btn btn-primary w-full"
                     >
-                        {isActionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (activeTab === 'deposit' ? 'Deposit cUSD' : 'Withdraw cUSD')}
+                        {isActionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : (activeTab === 'deposit' ? 'Deposit USDC' : 'Withdraw USDC')}
                     </button>
                 </form>
 
                 <div className="mt-6 flex items-center justify-center gap-2 text-[10px] text-secondary">
-                    <Lock className="w-3 h-3" />
-                    <span>cUSD transactions are encrypted and private using FHE</span>
+                    <Shield className="w-3 h-3" />
+                    <span>Balances only visible to you. Powered by Inco Lightning.</span>
                 </div>
             </div>
         </div>

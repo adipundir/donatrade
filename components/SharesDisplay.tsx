@@ -1,17 +1,18 @@
 import { FC, useState } from 'react';
 import { Eye, EyeOff, Lock, Loader2 } from 'lucide-react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { bytesToHandle, decryptHandle } from '@/lib/encryption';
+import { getProgram, buildAuthorizeDecryptionTx, getAllowancePDA } from '@/lib/solana';
 
 interface SharesDisplayProps {
-    encryptedShares?: number[]; // FHE handle bytes
+    encryptedShares?: any; // FHE handle (bytes, BN, or object)
     decryptedValue?: number | null; // Pre-decrypted value (if any)
     label?: string;
     compact?: boolean;
 }
 
 /**
- * Comic-style shares display with real FHE reveal via Inco Lightning.
+ * Comic-style shares display with real confidential reveal via TEE co-processor.
  */
 export const SharesDisplay: FC<SharesDisplayProps> = ({
     encryptedShares,
@@ -19,7 +20,8 @@ export const SharesDisplay: FC<SharesDisplayProps> = ({
     label = 'Your Shares',
     compact = false,
 }) => {
-    const { publicKey, signMessage } = useWallet();
+    const { connection } = useConnection();
+    const { publicKey, signMessage, signTransaction, signAllTransactions } = useWallet();
     const [isRevealed, setIsRevealed] = useState(decryptedValue !== null && decryptedValue !== undefined);
     const [revealedValue, setRevealedValue] = useState<bigint | null>(
         decryptedValue !== null && decryptedValue !== undefined ? BigInt(decryptedValue) : null
@@ -47,6 +49,20 @@ export const SharesDisplay: FC<SharesDisplayProps> = ({
         setIsLoading(true);
         try {
             const handleStr = bytesToHandle(encryptedShares);
+            const handle = BigInt(handleStr);
+
+            const [allowanceAccount] = getAllowancePDA(handle, publicKey);
+            const accountInfo = await connection.getAccountInfo(allowanceAccount);
+
+            if (!accountInfo) {
+                const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions }) as any;
+                if (program) {
+                    const authTx = await buildAuthorizeDecryptionTx(program, publicKey, handle);
+                    await authTx.rpc();
+                }
+            }
+
+            // Actual decryption
             const value = await decryptHandle(handleStr, {
                 publicKey,
                 signMessage,
@@ -115,22 +131,28 @@ export const SharesDisplay: FC<SharesDisplayProps> = ({
                     )}
                 </div>
                 <p className="text-xs text-muted mt-1" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                    {isLoading ? 'Decrypting via Inco...' : isRevealed ? 'Only visible to you!' : 'Click eye to reveal!'}
+                    {isLoading ? 'Decrypting via TEE...' : isRevealed ? 'Only visible to you!' : 'Encrypted for safety'}
                 </p>
             </div>
 
             <button
                 onClick={handleToggleReveal}
                 disabled={isLoading}
-                className="btn btn-secondary p-3 disabled:opacity-50"
-                title={isRevealed ? 'Hide shares' : 'Reveal shares'}
+                className="btn btn-secondary px-6 flex items-center gap-2 transition-all font-bold text-xs uppercase tracking-wider"
+                style={{ fontFamily: "'Bangers', cursive" }}
             >
                 {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" />
                 ) : isRevealed ? (
-                    <EyeOff className="w-5 h-5" />
+                    <>
+                        <EyeOff className="w-4 h-4" />
+                        Hide
+                    </>
                 ) : (
-                    <Eye className="w-5 h-5" />
+                    <>
+                        <Eye className="w-4 h-4" />
+                        Reveal Shares
+                    </>
                 )}
             </button>
         </div>

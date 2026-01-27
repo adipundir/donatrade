@@ -107,6 +107,8 @@ pub mod donatrade_program {
         )?;
 
         let vault = &mut ctx.accounts.investor_vault;
+        vault.owner = ctx.accounts.investor.key();
+        vault.bump = ctx.bumps.investor_vault; // Store bump
         vault.cusd = e_add(
             CpiContext::new(
                 inco_program.clone(),
@@ -119,23 +121,6 @@ pub mod donatrade_program {
             0,
         )?;
 
-        // 3. Auto-allow owner to decrypt
-        if let Some(allow_acc) = ctx.remaining_accounts.get(0) {
-            allow(
-                CpiContext::new(
-                    inco_program,
-                    Allow {
-                        allowance_account: allow_acc.clone(),
-                        signer: investor,
-                        allowed_address: ctx.accounts.investor.to_account_info(),
-                        system_program: ctx.accounts.system_program.to_account_info(),
-                    },
-                ),
-                vault.cusd.0,
-                true,
-                ctx.accounts.investor.key(),
-            )?;
-        }
         Ok(())
     }
 
@@ -200,6 +185,9 @@ pub mod donatrade_program {
             0,
         )?;
 
+        ctx.accounts.position.owner = ctx.accounts.investor.key();
+        ctx.accounts.position.company_id = company.company_id;
+        ctx.accounts.position.bump = ctx.bumps.position; // Store bump
         ctx.accounts.position.encrypted_shares = e_add(
             CpiContext::new(
                 inco_program.clone(),
@@ -263,23 +251,27 @@ pub mod donatrade_program {
             amount,
         )?;
 
-        // 3. Auto-allow owner to decrypt new balance
-        if let Some(allow_acc) = ctx.remaining_accounts.get(0) {
-            allow(
-                CpiContext::new(
-                    inco_program,
-                    Allow {
-                        allowance_account: allow_acc.clone(),
-                        signer: investor,
-                        allowed_address: ctx.accounts.investor.to_account_info(),
-                        system_program: ctx.accounts.system_program.to_account_info(),
-                    },
-                ),
-                ctx.accounts.investor_vault.cusd.0,
-                true,
-                ctx.accounts.investor.key(),
-            )?;
-        }
+        Ok(())
+    }
+
+    pub fn authorize_decryption(ctx: Context<AuthorizeDecryption>, handle: u128) -> Result<()> {
+        let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
+        let investor = ctx.accounts.investor.to_account_info();
+
+        allow(
+            CpiContext::new(
+                inco_program,
+                Allow {
+                    allowance_account: ctx.accounts.allowance_account.to_account_info(),
+                    signer: investor,
+                    allowed_address: ctx.accounts.investor.to_account_info(),
+                    system_program: ctx.accounts.system_program.to_account_info(),
+                },
+            ),
+            handle,
+            true,
+            ctx.accounts.investor.key(),
+        )?;
         Ok(())
     }
 
@@ -397,9 +389,9 @@ pub struct Deposit<'info> {
 pub struct Withdraw<'info> {
     #[account(mut)]
     pub investor: Signer<'info>,
-    #[account(mut, seeds = [b"vault", investor.key().as_ref()], bump = investor_vault.bump)]
+    #[account(mut, seeds = [b"vault", investor.key().as_ref()], bump)]
     pub investor_vault: Account<'info, InvestorVault>,
-    #[account(seeds = [b"vault_authority"], bump = global_vault.bump)]
+    #[account(seeds = [b"vault_authority"], bump)]
     pub global_vault: Account<'info, GlobalProgramVault>,
     #[account(mut)]
     pub investor_token_account: Account<'info, TokenAccount>,
@@ -415,7 +407,7 @@ pub struct Withdraw<'info> {
 pub struct BuyShares<'info> {
     #[account(mut)]
     pub investor: Signer<'info>,
-    #[account(mut, seeds = [b"vault", investor.key().as_ref()], bump = investor_vault.bump)]
+    #[account(mut, seeds = [b"vault", investor.key().as_ref()], bump)]
     pub investor_vault: Account<'info, InvestorVault>,
     #[account(mut)]
     pub company_account: Account<'info, CompanyAccount>,
@@ -430,12 +422,24 @@ pub struct BuyShares<'info> {
 pub struct SellShares<'info> {
     #[account(mut)]
     pub investor: Signer<'info>,
-    #[account(mut, seeds = [b"vault", investor.key().as_ref()], bump = investor_vault.bump)]
+    #[account(mut, seeds = [b"vault", investor.key().as_ref()], bump)]
     pub investor_vault: Account<'info, InvestorVault>,
     #[account(mut)]
     pub company_account: Account<'info, CompanyAccount>,
-    #[account(mut, seeds = [b"position", company_account.company_id.to_le_bytes().as_ref(), investor.key().as_ref()], bump = position.bump)]
+    #[account(mut, seeds = [b"position", company_account.company_id.to_le_bytes().as_ref(), investor.key().as_ref()], bump)]
     pub position: Account<'info, PositionAccount>,
+    #[account(address = INCO_LIGHTNING_ID)]
+    pub inco_lightning_program: AccountInfo<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct AuthorizeDecryption<'info> {
+    #[account(mut)]
+    pub investor: Signer<'info>,
+    /// CHECK: Validated by Inco program
+    #[account(mut)]
+    pub allowance_account: UncheckedAccount<'info>,
     #[account(address = INCO_LIGHTNING_ID)]
     pub inco_lightning_program: AccountInfo<'info>,
     pub system_program: Program<'info, System>,

@@ -30,11 +30,9 @@ export const Providers: FC<ProvidersProps> = ({ children }) => {
   // Solana Devnet endpoint
   const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
 
-  // Configure supported wallets - Phantom is the primary wallet
+  // Configure supported wallets - Modern wallets like Phantom are discovered automatically via the Wallet Standard
   const wallets = useMemo(
-    () => [
-      new PhantomWalletAdapter(),
-    ],
+    () => [],
     []
   );
 

@@ -4,10 +4,14 @@ import { useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Lock, Building2, ExternalLink, Shield, Wallet, Eye, EyeOff, TrendingUp, ArrowDownToLine, Loader2 } from 'lucide-react';
+import { Lock, Building2, ExternalLink, Shield, Wallet, Eye, EyeOff, TrendingUp, ArrowDownToLine, ArrowUpFromLine, Loader2 } from 'lucide-react';
 import { PrivacyBadge } from '@/components/PrivacyBadge';
 import { SharesDisplay } from '@/components/SharesDisplay';
-import { getProgram, fetchInvestorVault, fetchInvestorPositions } from '@/lib/solana';
+import {
+    getProgram, fetchInvestorVault, fetchInvestorPositions,
+    buildAuthorizeDecryptionTx,
+    getAllowancePDA,
+} from '@/lib/solana';
 import { getCompanyById, formatPricePerShare } from '@/lib/mockData';
 import { formatUSDC } from '@/lib/inco';
 import { useVaultModal } from '@/components/VaultProvider';
@@ -70,8 +74,22 @@ export default function PortfolioPage() {
         if (!rawVault || !publicKey || !signMessage) return;
         setIsRevealingVault(true);
         try {
-            const handleStr = bytesToHandle(rawVault.cusd.inner as number[]);
+            const handleStr = bytesToHandle(rawVault.cusd);
+            const handle = BigInt(handleStr);
+
+            const [allowanceAccount] = getAllowancePDA(handle, publicKey);
+            const accountInfo = await connection.getAccountInfo(allowanceAccount);
+
+            if (!accountInfo) {
+                const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions }) as any;
+                if (program) {
+                    const authTx = await buildAuthorizeDecryptionTx(program, publicKey, handle);
+                    await authTx.rpc();
+                }
+            }
+
             const value = await decryptHandle(handleStr, { publicKey, signMessage });
+
             if (value !== null) {
                 setVaultBalance(value);
                 setShowVaultBalance(true);
@@ -119,9 +137,12 @@ export default function PortfolioPage() {
                     </div>
                     <div className="flex items-center justify-between">
                         <div>
-                            <h1 className="text-3xl md:text-4xl mb-2">Your Portfolio</h1>
-                            <p className="text-secondary" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                                All your holdings are encrypted. Only you can see the values.
+                            <div className="flex items-center gap-2 mb-2">
+                                <ArrowUpFromLine className="w-5 h-5 text-accent" />
+                                <h3 className="font-bold text-lg" style={{ fontFamily: "'Bangers', cursive" }}>Confidential Vault</h3>
+                            </div>
+                            <p className="text-secondary text-sm mb-4" style={{ fontFamily: "'Comic Neue', cursive" }}>
+                                Your trading capital is protected in a confidential vault.
                             </p>
                         </div>
                         <PrivacyBadge />
@@ -132,25 +153,9 @@ export default function PortfolioPage() {
                 <div className="grid md:grid-cols-2 gap-4 mb-8">
                     {/* Vault Balance Card */}
                     <div className="card">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                                <Wallet className="w-5 h-5 text-accent" />
-                                <h2 className="text-lg font-bold">Encrypted Vault</h2>
-                            </div>
-                            <button
-                                onClick={handleRevealVault}
-                                disabled={isRevealingVault || !rawVault}
-                                className="p-2 hover:bg-surface rounded transition-colors disabled:opacity-50"
-                                title={showVaultBalance ? 'Hide balance' : 'Reveal balance via Inco'}
-                            >
-                                {isRevealingVault ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : showVaultBalance ? (
-                                    <EyeOff className="w-4 h-4" />
-                                ) : (
-                                    <Eye className="w-4 h-4" />
-                                )}
-                            </button>
+                        <div className="flex items-center gap-2 mb-4">
+                            <Wallet className="w-5 h-5 text-accent" />
+                            <h2 className="text-lg font-bold">Confidential Vault</h2>
                         </div>
                         <div className="flex items-baseline gap-2 mb-2">
                             <span className="text-3xl font-bold">
@@ -162,9 +167,32 @@ export default function PortfolioPage() {
                             </span>
                             <span className="text-secondary font-bold">cUSD</span>
                         </div>
+
+                        {rawVault && (
+                            <button
+                                onClick={showVaultBalance ? () => setShowVaultBalance(false) : handleRevealVault}
+                                disabled={isRevealingVault}
+                                className="mt-4 w-full py-2 border-2 border-foreground bg-background hover:bg-surface font-bold uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 transition-all active:translate-y-[2px]"
+                            >
+                                {isRevealingVault ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : showVaultBalance ? (
+                                    <>
+                                        <EyeOff className="w-3 h-3" />
+                                        Hide Balance
+                                    </>
+                                ) : (
+                                    <>
+                                        <Eye className="w-3 h-3" />
+                                        Reveal cUSD balance
+                                    </>
+                                )}
+                            </button>
+                        )}
+
                         <button
                             onClick={openVault}
-                            className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
+                            className="mt-4 inline-flex items-center gap-1 text-sm text-accent hover:underline"
                         >
                             <ArrowDownToLine className="w-3 h-3" />
                             Manage Vault
@@ -263,7 +291,7 @@ export default function PortfolioPage() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
                                         <SharesDisplay
-                                            encryptedShares={position.shares.inner as number[]}
+                                            encryptedShares={position.encryptedShares}
                                             label="Shares Owned"
                                         />
                                     </div>

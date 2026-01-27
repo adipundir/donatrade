@@ -70,6 +70,7 @@ export function getAllowancePDA(handle: bigint, allowedAddress: PublicKey): [Pub
     );
 }
 
+
 import { IDL } from "./idl";
 
 /**
@@ -125,15 +126,13 @@ export const getProgram = (connection: Connection, wallet: any): Program<any> | 
  * Builds a deposit instruction
  */
 export async function buildDepositTx(
-    program: Program<any>,
+    program: Program,
     investor: PublicKey,
-    amount: bigint,
+    vault: PublicKey,
     investorTokenAccount: PublicKey,
     vaultTokenAccount: PublicKey,
-    allowancePDA: PublicKey
+    amount: number
 ) {
-    const [vault] = getInvestorVaultPDA(investor);
-
     return await (program as any).methods
         .deposit(new BN(amount.toString()))
         .accounts({
@@ -144,11 +143,27 @@ export async function buildDepositTx(
             incoLightningProgram: INCO_LIGHTNING_ID,
             tokenProgram: TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
-        })
-        .remainingAccounts([
-            { pubkey: allowancePDA, isSigner: false, isWritable: true },
-            { pubkey: investor, isSigner: false, isWritable: false },
-        ]);
+        });
+}
+
+/**
+ * Authorizes the current user to decrypt a specific handle.
+ */
+export async function buildAuthorizeDecryptionTx(
+    program: Program,
+    investor: PublicKey,
+    handle: bigint
+) {
+    const [allowancePDA] = getAllowancePDA(handle, investor);
+
+    return await (program as any).methods
+        .authorizeDecryption(new BN(handle.toString()))
+        .accounts({
+            investor,
+            allowanceAccount: allowancePDA,
+            incoLightningProgram: INCO_LIGHTNING_ID,
+            systemProgram: SystemProgram.programId,
+        });
 }
 
 /**
@@ -220,7 +235,11 @@ export async function fetchInvestorVault(program: Program<any>, investor: Public
     try {
         const account = await (program.account as any).investorVault.fetch(vaultPDA);
         return account;
-    } catch (e) {
+    } catch (e: any) {
+        // Suppress expected error for new users who haven't created a vault yet
+        if (e.message?.includes("Account does not exist") || e.message?.includes("Account") && e.message?.includes("not found")) {
+            return null;
+        }
         console.error("Error fetching investor vault:", e);
         return null;
     }

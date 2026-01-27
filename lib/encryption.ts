@@ -8,18 +8,36 @@ import { decrypt } from '@inco/solana-sdk/attested-decrypt';
  * Converts a 16-byte EUINT128 handle (from the contract) to a decimal string.
  * The Inco SDK requires handles as decimal strings for decryption requests.
  */
-export function bytesToHandle(bytes: number[]): string {
-    if (!bytes || bytes.length !== 16) {
-        console.warn("[Encryption] Invalid handle bytes length:", bytes?.length);
-        return "0";
+export function bytesToHandle(input: any): string {
+    if (!input) return "0";
+
+    // Handle new Anchor 0.31 IDL format (BN or object with numeric key)
+    if (typeof input === 'string') return input;
+    if (typeof input === 'bigint') return input.toString();
+    if (typeof input === 'object') {
+        // Handle BN or tuple struct
+        if (input.toString && typeof input.toString === 'function' && !Array.isArray(input)) {
+            const str = input.toString();
+            // If it's a numeric string, it's a handle
+            if (!isNaN(Number(str)) || /^\d+$/.test(str)) return str;
+        }
+        // Handle the case where it's { 0: BN }
+        if (input[0]) return input[0].toString();
+        // Handle the case where it's { inner: number[] }
+        if (input.inner) return bytesToHandle(input.inner);
     }
 
-    // handles are u128 little-endian
-    let handle = BigInt(0);
-    for (let i = 15; i >= 0; i--) {
-        handle = handle * BigInt(256) + BigInt(bytes[i]);
+    if (Array.isArray(input) && input.length === 16) {
+        // handles are u128 little-endian
+        let handle = BigInt(0);
+        for (let i = 15; i >= 0; i--) {
+            handle = handle * BigInt(256) + BigInt(input[i]);
+        }
+        return handle.toString();
     }
-    return handle.toString();
+
+    console.warn("[Encryption] Unexpected handle input format:", typeof input);
+    return "0";
 }
 
 /**
@@ -41,7 +59,14 @@ export async function decryptHandle(handleStr: string, wallet: any): Promise<big
             return BigInt(result.plaintexts[0]);
         }
         return null;
-    } catch (error) {
+    } catch (error: any) {
+        const errorMsg = error?.message || "";
+        // If the error is about missing allowance, return null to trigger the two-step auth
+        if (errorMsg.includes("Address is not allowed") || errorMsg.includes("403")) {
+            console.log("[Encryption] Decryption permission missing, returning null for auto-authorize.");
+            return null;
+        }
+
         console.error("[Encryption] Decryption failed:", error);
         throw error;
     }
