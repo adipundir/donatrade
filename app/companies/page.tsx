@@ -7,10 +7,10 @@ import Link from 'next/link';
 import { Shield, Building2, ArrowRight, Lock, Calendar, TrendingUp, DollarSign } from 'lucide-react';
 import { PrivacyBadge } from '@/components/PrivacyBadge';
 import { formatPricePerShare } from '@/lib/mockData';
-import { getProgram, getCompanyPDA, fetchCompanyByAdmin, fetchAllCompanies } from '@/lib/solana';
 import { ApplicationReviewModal } from '@/components/ApplicationReviewModal';
 import { RegisterCompanyModal } from '@/components/RegisterCompanyModal';
-import { PublicKey } from '@solana/web3.js';
+import { getCompanies, getCompanyByWallet } from '@/lib/actions/companies';
+import { getProgram } from '@/lib/solana';
 
 /**
  * Companies Page - Browse private companies with active share offerings.
@@ -37,71 +37,12 @@ export default function CompaniesPage() {
     const checkUserApplication = async () => {
         if (!publicKey || !connected) return;
         try {
-            const appResult = await fetchCompanyByAdmin(connection, publicKey);
-            if (!appResult) return;
-
-            const program = getProgram(connection, wallet);
-            if (!program) return;
-
-            try {
-                // TIGHT TRY-CATCH for the Anchor fetch to prevent "Invalid bool" crash
-                const data = await (program.account as any).companyAccount.fetch(appResult.pubkey);
-                console.log("[DonaTrade] User application decoded:", data.companyId?.toString());
-                setUserApplication(data);
-            } catch (decodeErr) {
-                console.warn("[DonaTrade] Anchor decode failed, trying manual fallback:", decodeErr);
-
-                // FALLBACK: Directly parse from account buffer bytes
-                if (appResult.data && appResult.data.length >= 67) {
-                    try {
-                        const buf = appResult.data;
-                        const len = buf.length;
-                        console.log("[DonaTrade] Manual Fallback for Buffer Length:", len);
-
-                        // 1. Company ID (u64, LE, Offset 8)
-                        let cid = BigInt(0);
-                        const idBuf = buf.slice(8, 16);
-                        for (let i = 7; i >= 0; i--) cid = (cid << BigInt(8)) | BigInt(idBuf[i]);
-
-                        // 2. Company Admin (Pubkey, 32 bytes, Offset 16)
-                        const adminBytes = buf.slice(16, 48);
-                        const adminPubkey = new PublicKey(adminBytes);
-
-                        // 3. Flags (Active/Approved)
-                        // Layout 82: 8(disc)+8(ID)+32(Admin)+16(cusd)+8(S)+8(P)+1(A)+1(App) = 82
-                        let active = false;
-                        let approved = false;
-                        let handleBytes: Uint8Array | null = null;
-
-                        if (len === 82) {
-                            console.warn("[DonaTrade] IGNORING Legacy 82-byte account to allow fresh registration.");
-                            return; // EXIT EARLY: Treat as if no application exists
-                        } else if (len >= 130) {
-                            // Layout Update with Encrypted Fields:
-                            // Disc(8) + ID(8) + Admin(32) + CUSD(16) + Share(16) + Price(16) + SharePub(8) + PricePub(8) + Active(1) + App(1) = 114 bytes fixed prefix
-                            active = buf[112] === 1;
-                            approved = buf[113] === 1;
-                            const handleOffset = len - 17; // metadata_key is still at end - 17
-                            handleBytes = buf.slice(handleOffset, handleOffset + 16);
-                        }
-
-                        setUserApplication({
-                            pubkey: appResult.pubkey,
-                            companyId: cid,
-                            companyAdmin: adminPubkey,
-                            metadataKey: handleBytes,
-                            isApproved: approved,
-                            pricePerShare: BigInt(0),
-                            offeringUrl: "",
-                            active: active,
-                            cusd: null
-                        } as any);
-
-                        console.log("[DonaTrade] Fallback SUCCESS. ID:", cid.toString(), "Approved:", approved);
-                    } catch (fallbackErr) {
-                        console.error("[DonaTrade] Fallback parsing failed:", fallbackErr);
-                    }
-                }
+            const result = await getCompanyByWallet(publicKey.toBase58());
+            if (result.success && result.company) {
+                setUserApplication(result.company);
+                console.log("[DonaTrade] User has pending application:", result.company.name);
+            } else {
+                setUserApplication(null);
             }
         } catch (e) {
             console.error("[DonaTrade] Error checking user application:", e);
@@ -111,45 +52,49 @@ export default function CompaniesPage() {
     const fetchCompanies = async () => {
         setIsLoading(true);
         try {
-            if (!wallet.signTransaction || !wallet.signAllTransactions) {
-                setCompanies([]); // No mock data fallback
-                setIsLoading(false);
-                return;
+            const result = await getCompanies('active');
+            if (!result.success) {
+                throw new Error('Failed to fetch companies');
             }
+            const activeCompanies = result.companies || [];
 
-            const program = getProgram(connection, wallet);
-            if (!program) return;
-
-            const accounts = await fetchAllCompanies(connection);
-            const fetched = [];
-
-            for (const account of accounts) {
-                try {
-                    const data = await (program.account as any).companyAccount.fetch(account.pubkey);
-                    if (data && data.isApproved) {
-                        const companyId = Number(data.companyId);
-
-                        // Enforce real data only. 
-                        // Name/Desc are encrypted or generic if not decrypted.
-                        fetched.push({
-                            ...data,
-                            companyId: companyId,
-                            name: `Private Company #${companyId}`,
-                            description: "Confidential investment opportunity.",
-                            sector: "Private",
-                            pricePerShare: data.pricePerShare ? Number(data.pricePerShare) : 0,
-                            sharesAvailable: Number(data.sharesAvailable || 0),
-                            totalSharesIssued: 1000000,
-                            active: !!data.active
-                        });
-                    }
-                } catch (decodeErr) {
-                    // Skip accounts that fail to decode in the public list
+            // Fetch on-chain data for real available shares
+            let onChainData: any[] = [];
+            try {
+                const program = getProgram(connection, wallet);
+                if (program) {
+                    onChainData = await (program.account as any).companyAccount.all();
                 }
+            } catch (err) {
+                console.error("[DonaTrade] Error fetching on-chain accounts:", err);
             }
+
+            // Transform to match display format, merging on-chain data
+            const fetched = activeCompanies.map((company: any) => {
+                // Find matching on-chain account by company_id (which is company.chainId)
+                const onChain = onChainData.find(pd =>
+                    pd.account.companyId.toString() === (company.chainId?.toString() || "")
+                );
+
+                return {
+                    companyId: company.chainId,
+                    name: company.name,
+                    description: company.description,
+                    sector: company.sector,
+                    offeringUrl: company.offeringUrl,
+                    logoUrl: company.logoUrl,
+                    pricePerShare: onChain ? Number(onChain.account.pricePerShare) : company.pricePerShare,
+                    sharesAvailable: onChain ? Number(onChain.account.sharesAvailable) : company.initialShares,
+                    totalSharesIssued: company.initialShares,
+                    active: onChain ? onChain.account.active : true,
+                    isApproved: true,
+                };
+            });
+
             setCompanies(fetched);
         } catch (e) {
             console.error("[DonaTrade] Error fetching companies:", e);
+            setCompanies([]);
         } finally {
             setIsLoading(false);
         }
@@ -222,8 +167,7 @@ export default function CompaniesPage() {
                     isOpen={isRegisterModalOpen}
                     onClose={() => setIsRegisterModalOpen(false)}
                     onSuccess={() => {
-                        setIsRegisterModalOpen(false);
-                        fetchCompanies();
+                        // Don't close modal - just refresh application state
                         checkUserApplication();
                     }}
                 />
@@ -278,9 +222,6 @@ export default function CompaniesPage() {
                                 <div className={`card h-full animate-pop stagger-${index + 1} hover:border-accent transition-colors`}>
                                     <div className="flex items-start justify-between mb-4">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-14 h-14 border-3 border-black flex items-center justify-center bg-accent-light">
-                                                <Building2 className="w-7 h-7" />
-                                            </div>
                                             <div>
                                                 <h3 className="text-xl text-foreground group-hover:text-accent transition-colors">
                                                     {company.name}
@@ -292,9 +233,9 @@ export default function CompaniesPage() {
                                                         </span>
                                                     )}
                                                     {company.active ? (
-                                                        <span className="badge badge-active">Active</span>
+                                                        <span className="badge badge-active">CSA ACTIVE</span>
                                                     ) : (
-                                                        <span className="badge badge-inactive">Closed</span>
+                                                        <span className="badge badge-inactive">CLOSED</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -316,7 +257,9 @@ export default function CompaniesPage() {
                                         </div>
                                         <div className="p-3 bg-surface border-2 border-foreground">
                                             <p className="text-xs text-muted uppercase">Available</p>
-                                            <p className="text-lg font-bold">{company.sharesAvailable.toLocaleString()}</p>
+                                            <p className="text-lg font-bold">
+                                                {company.sharesAvailable.toLocaleString()} / {company.totalSharesIssued.toLocaleString()}
+                                            </p>
                                         </div>
                                     </div>
 

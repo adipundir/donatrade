@@ -96,8 +96,7 @@ export default function ManageCompaniesPage() {
                 selectedCompany.companyId,
                 newPrice,
                 addShares,
-                form.active,
-                form.offeringUrl || null
+                form.active
             );
 
             const transaction = await tx.transaction();
@@ -369,18 +368,6 @@ export default function ManageCompaniesPage() {
                                                 type="text"
                                                 value={form.legalAgreementLink}
                                                 onChange={(e) => setForm({ ...form, legalAgreementLink: e.target.value })}
-                                                placeholder="https://..."
-                                                className="input"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-bold uppercase mb-2 tracking-wider" style={{ fontFamily: "'Bangers', cursive" }}>
-                                                Offering URL
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={form.offeringUrl}
-                                                onChange={(e) => setForm({ ...form, offeringUrl: e.target.value })}
                                                 placeholder="https://..."
                                                 className="input"
                                             />

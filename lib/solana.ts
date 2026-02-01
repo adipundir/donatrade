@@ -145,8 +145,8 @@ export const getProgram = (connection: Connection, wallet: any): Program<any> | 
         console.log("[DonaTrade] Program initialized. Available methods:", Object.keys(program.methods));
 
         // Final check
-        if (!(program.methods as any).submitApplication && !(program.methods as any).submit_application) {
-            console.error("[DonaTrade] CRITICAL: submit_application not found in program methods!");
+        if (!(program.methods as any).activateCompany && !(program.methods as any).activate_company) {
+            console.error("[DonaTrade] CRITICAL: activate_company not found in program methods!");
         }
 
         return program;
@@ -261,77 +261,35 @@ export function buildSellSharesTx(
 }
 
 /**
- * Builds a create company instruction
+ * Builds an activate company instruction (Admin-only).
+ * Creates the on-chain CompanyAccount after off-chain approval.
  */
-export function buildCreateCompanyTx(
+export function buildActivateCompanyTx(
     program: Program<any>,
-    payer: PublicKey,
-    companyAdmin: PublicKey,
+    platformAdmin: PublicKey,
     companyId: number,
+    companyAdmin: PublicKey,
     initialShares: bigint,
-    pricePerShare: bigint,
-    offeringUrl: string, // Ciphertext
-    metadataKey: bigint  // FHE Key handle
+    pricePerShare: bigint
 ) {
     const [companyAccount] = getCompanyPDA(companyId);
 
-    const method = (program.methods as any).createCompany || (program.methods as any).create_company;
-    if (!method) throw new Error("createCompany method not found");
+    const method = (program.methods as any).activateCompany || (program.methods as any).activate_company;
+    if (!method) throw new Error("activateCompany method not found");
 
     return method(
         new BN(companyId.toString()),
+        companyAdmin,
         new BN(initialShares.toString()),
         new BN(pricePerShare.toString()),
-        offeringUrl,
-        new BN(metadataKey.toString())
     )
         .accounts({
-            payer,
-            companyAdmin,
-            companyAccount,
-            systemProgram: SystemProgram.programId,
+            platform_admin: platformAdmin,
+            company_account: companyAccount,
+            system_program: SystemProgram.programId,
         });
 }
 
-/**
- * Builds a consolidated submit application instruction.
- * This combines create_company + allow(Admin) + allow(Self) into one call.
- */
-export function buildSubmitApplicationTx(
-    program: Program<any>,
-    payer: PublicKey,
-    companyAdmin: PublicKey,
-    companyId: number,
-    initialShares: bigint,
-    pricePerShare: bigint,
-    offeringUrl: string,
-    metadataHandle: bigint
-) {
-    const [companyAccount] = getCompanyPDA(companyId);
-    const [adminAllowanceAccount] = getAllowancePDA(metadataHandle, PLATFORM_ADMIN);
-    const [selfAllowanceAccount] = getAllowancePDA(metadataHandle, companyAdmin);
-
-    const method = (program.methods as any).submitApplication || (program.methods as any).submit_application;
-    if (!method) throw new Error("submitApplication method not found");
-
-    return method(
-        new BN(companyId.toString()),
-        new BN(initialShares.toString()),
-        new BN(pricePerShare.toString()),
-        offeringUrl,
-        new BN(metadataHandle.toString())
-    )
-        .accounts({
-            payer,
-            companyAdmin,
-            companyAccount,
-            adminAllowanceAccount,
-            selfAllowanceAccount,
-            platformAdmin: PLATFORM_ADMIN,
-            incoLightningProgram: INCO_LIGHTNING_ID,
-            systemProgram: SystemProgram.programId,
-        });
-}
 
 /**
  * Builds an update offering instruction
@@ -342,20 +300,19 @@ export function buildUpdateOfferingTx(
     companyId: number,
     newPrice: bigint,
     addShares: bigint,
-    active: boolean,
-    offeringUrl: string | null = null,
+    active: boolean
 ) {
     const [companyAccount] = getCompanyPDA(companyId);
 
     return (program.methods as any).updateOffering(
         new BN(newPrice.toString()),
         new BN(addShares.toString()),
-        active,
-        offeringUrl,
+        active
     )
         .accounts({
-            companyAdmin,
-            companyAccount,
+            company_admin: companyAdmin,
+            company_account: companyAccount,
+            inco_lightning_program: INCO_LIGHTNING_ID,
         });
 }
 
@@ -424,7 +381,7 @@ export async function fetchInvestorPositions(program: Program<any>, investor: Pu
     for (const id of companyIds) {
         const [positionPDA] = getPositionPDA(id, investor);
         try {
-            const data = await (program.account as any).position.fetch(positionPDA);
+            const data = await (program.account as any).positionAccount.fetch(positionPDA);
             if (data) {
                 positions.push({ ...data, companyId: id });
             }
@@ -606,19 +563,4 @@ export function buildExecuteTradeTx(
         });
 }
 
-export function buildApproveCompanyTx(
-    program: Program<any>,
-    admin: PublicKey,
-    companyAdmin: PublicKey,
-    companyId: number
-) {
-    const [companyAccount] = getCompanyPDA(companyId);
 
-    return (program.methods as any).approveCompany()
-        .accounts({
-            admin,
-            companyAdmin,
-            companyAccount,
-            systemProgram: SystemProgram.programId,
-        });
-}

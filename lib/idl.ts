@@ -1,5 +1,4 @@
-export const IDL =
-{
+export const IDL = {
   "address": "2CuAjUWhAPfFuY6tCxxpqjnb43yZyRXnBM6fF7M6Y8ho",
   "metadata": {
     "name": "donatrade_program",
@@ -9,46 +8,50 @@ export const IDL =
   },
   "instructions": [
     {
-      "name": "submit_application",
+      "name": "activate_company",
+      "docs": [
+        "Admin-only: Activate a company that was approved off-chain.",
+        "Creates the on-chain CompanyAccount with encrypted financial state."
+      ],
       "discriminator": [
-        27,
-        71,
-        89,
-        170,
-        144,
-        203,
-        50,
-        8
+        10,
+        135,
+        81,
+        35,
+        93,
+        168,
+        179,
+        72
       ],
       "accounts": [
         {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "company_admin",
+          "name": "platform_admin",
           "writable": true,
           "signer": true
         },
         {
           "name": "company_account",
-          "writable": true
-        },
-        {
-          "name": "admin_allowance_account",
-          "writable": true
-        },
-        {
-          "name": "self_allowance_account",
-          "writable": true
-        },
-        {
-          "name": "platform_admin"
-        },
-        {
-          "name": "inco_lightning_program",
-          "address": "5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj"
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  109,
+                  112,
+                  97,
+                  110,
+                  121
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "company_id"
+              }
+            ]
+          }
         },
         {
           "name": "system_program",
@@ -61,47 +64,18 @@ export const IDL =
           "type": "u64"
         },
         {
+          "name": "company_admin",
+          "type": "pubkey"
+        },
+        {
           "name": "initial_shares",
           "type": "u64"
         },
         {
           "name": "price_per_share",
           "type": "u64"
-        },
-        {
-          "name": "offering_url",
-          "type": "string"
-        },
-        {
-          "name": "metadata_handle",
-          "type": "u128"
         }
       ]
-    },
-    {
-      "name": "approve_company",
-      "discriminator": [
-        168,
-        137,
-        195,
-        75,
-        165,
-        79,
-        119,
-        142
-      ],
-      "accounts": [
-        {
-          "name": "platform_admin",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "company_account",
-          "writable": true
-        }
-      ],
-      "args": []
     },
     {
       "name": "authorize_decryption",
@@ -235,83 +209,6 @@ export const IDL =
       ]
     },
     {
-      "name": "create_company",
-      "discriminator": [
-        36,
-        192,
-        217,
-        147,
-        233,
-        129,
-        198,
-        18
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "company_admin"
-        },
-        {
-          "name": "company_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  109,
-                  112,
-                  97,
-                  110,
-                  121
-                ]
-              },
-              {
-                "kind": "arg",
-                "path": "company_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "company_id",
-          "type": "u64"
-        },
-        {
-          "name": "initial_shares",
-          "type": "u64"
-        },
-        {
-          "name": "price_per_share",
-          "type": "u64"
-        },
-        {
-          "name": "offering_url",
-          "type": "string"
-        },
-        {
-          "name": "metadata_key",
-          "type": {
-            "defined": {
-              "name": "Euint128"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "create_offer",
       "discriminator": [
         237,
@@ -331,6 +228,36 @@ export const IDL =
         },
         {
           "name": "company_account"
+        },
+        {
+          "name": "seller_position",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "company_account.company_id",
+                "account": "CompanyAccount"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
         },
         {
           "name": "offer_account",
@@ -357,6 +284,10 @@ export const IDL =
               }
             ]
           }
+        },
+        {
+          "name": "inco_lightning_program",
+          "address": "5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj"
         },
         {
           "name": "system_program",
@@ -475,6 +406,45 @@ export const IDL =
         {
           "name": "seller_vault",
           "writable": true
+        },
+        {
+          "name": "company_account",
+          "docs": [
+            "The company for which shares are being traded"
+          ]
+        },
+        {
+          "name": "buyer_position",
+          "docs": [
+            "Buyer's position account for receiving shares"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  111,
+                  115,
+                  105,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "company_account.company_id",
+                "account": "CompanyAccount"
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              }
+            ]
+          }
         },
         {
           "name": "inco_lightning_program",
@@ -775,6 +745,10 @@ export const IDL =
               }
             ]
           }
+        },
+        {
+          "name": "inco_lightning_program",
+          "address": "5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj"
         }
       ],
       "args": [
@@ -789,12 +763,6 @@ export const IDL =
         {
           "name": "active",
           "type": "bool"
-        },
-        {
-          "name": "offering_url",
-          "type": {
-            "option": "string"
-          }
         }
       ]
     },
@@ -1124,22 +1092,6 @@ export const IDL =
             "type": "bool"
           },
           {
-            "name": "is_approved",
-            "type": "bool"
-          },
-          {
-            "name": "offering_url",
-            "type": "string"
-          },
-          {
-            "name": "metadata_key",
-            "type": {
-              "defined": {
-                "name": "Euint128"
-              }
-            }
-          },
-          {
             "name": "bump",
             "type": "u8"
           }
@@ -1151,10 +1103,7 @@ export const IDL =
       "type": {
         "kind": "struct",
         "fields": [
-          {
-            "name": "handle",
-            "type": "u128"
-          }
+          "u128"
         ]
       }
     },
@@ -1220,6 +1169,14 @@ export const IDL =
             "type": "u64"
           },
           {
+            "name": "escrowed_shares",
+            "type": {
+              "defined": {
+                "name": "Euint128"
+              }
+            }
+          },
+          {
             "name": "price_per_share",
             "type": "u64"
           },
@@ -1263,4 +1220,4 @@ export const IDL =
       }
     }
   ]
-};
+}

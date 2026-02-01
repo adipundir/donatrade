@@ -27,18 +27,13 @@ pub struct CompanyAccount {
     pub company_admin: Pubkey,
     pub cusd: Euint128,
 
-    // Encrypted Fields (Private by default)
-    pub shares_available: Euint128,
-    pub price_per_share: Euint128,
+    // Public Shares Available (visible to all)
+    pub shares_available: u64,
 
-    // Public Mirrors (Populated after approval)
-    pub shares_available_public: u64,
-    pub price_per_share_public: u64,
+    // Plaintext Price
+    pub price_per_share: u64,
 
     pub active: bool,
-    pub is_approved: bool,
-    pub offering_url: String,   // Store ciphertext string if needed, or url
-    pub metadata_key: Euint128, // Key handle for decryption
     pub bump: u8,
 }
 
@@ -82,96 +77,22 @@ pub mod donatrade_program {
         Ok(())
     }
 
-    pub fn create_company(
-        ctx: Context<CreateCompany>,
+    /// Admin-only: Activate a company that was approved off-chain.
+    /// Creates the on-chain CompanyAccount with encrypted financial state.
+    pub fn activate_company(
+        ctx: Context<ActivateCompany>,
         company_id: u64,
-        initial_shares_handle: u128,
-        price_per_share_handle: u128,
-        offering_url: String,
-        metadata_handle: u128, // Using u128 handle
+        company_admin: Pubkey,
+        initial_shares: u64,
+        price_per_share: u64,
     ) -> Result<()> {
         let company = &mut ctx.accounts.company_account;
         company.company_id = company_id;
-        company.company_admin = ctx.accounts.company_admin.key();
-        company.shares_available = Euint128(initial_shares_handle);
-        company.price_per_share = Euint128(price_per_share_handle);
-        company.shares_available_public = 0;
-        company.price_per_share_public = 0;
+        company.company_admin = company_admin;
+        company.shares_available = initial_shares;
+        company.price_per_share = price_per_share;
         company.active = true;
-        company.is_approved = false;
-        company.offering_url = offering_url;
-        company.metadata_key = Euint128(metadata_handle);
         company.bump = ctx.bumps.company_account;
-        Ok(())
-    }
-
-    pub fn submit_application(
-        ctx: Context<SubmitApplication>,
-        company_id: u64,
-        initial_shares_handle: u128,
-        price_per_share_handle: u128,
-        offering_url: String,
-        metadata_handle: u128,
-    ) -> Result<()> {
-        // 1. Initialize company account
-        let company = &mut ctx.accounts.company_account;
-        company.company_id = company_id;
-        company.company_admin = ctx.accounts.company_admin.key();
-        company.shares_available = Euint128(initial_shares_handle);
-        company.price_per_share = Euint128(price_per_share_handle);
-        company.shares_available_public = 0;
-        company.price_per_share_public = 0;
-        company.active = true;
-        company.is_approved = false;
-        company.offering_url = offering_url;
-        company.metadata_key = Euint128(metadata_handle);
-        company.bump = ctx.bumps.company_account;
-
-        let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
-
-        // 2. Grant access to Platform Admin for review
-        allow(
-            CpiContext::new(
-                inco_program.clone(),
-                Allow {
-                    allowance_account: ctx.accounts.admin_allowance_account.to_account_info(),
-                    signer: ctx.accounts.company_admin.to_account_info(),
-                    allowed_address: ctx.accounts.platform_admin.to_account_info(),
-                    system_program: ctx.accounts.system_program.to_account_info(),
-                },
-            ),
-            metadata_handle,
-            true,                              // is_encrypted checks
-            ctx.accounts.platform_admin.key(), // derived address
-        )?;
-
-        // 3. Grant access to Self (Creator) so they can see their own data
-        allow(
-            CpiContext::new(
-                inco_program,
-                Allow {
-                    allowance_account: ctx.accounts.self_allowance_account.to_account_info(),
-                    signer: ctx.accounts.company_admin.to_account_info(),
-                    allowed_address: ctx.accounts.company_admin.to_account_info(),
-                    system_program: ctx.accounts.system_program.to_account_info(),
-                },
-            ),
-            metadata_handle,
-            true,                             // is_encrypted check
-            ctx.accounts.company_admin.key(), // derived address
-        )?;
-
-        Ok(())
-    }
-
-    pub fn approve_company(ctx: Context<ApproveCompany>) -> Result<()> {
-        let company = &mut ctx.accounts.company_account;
-        company.is_approved = true;
-
-        // Decryption logic pending availability of inco_lightning::cpi::decrypt or equivalent.
-        // Once approved, data is intended to be public.
-        // Currently, it remains encrypted on-chain.
-
         Ok(())
     }
 
@@ -278,8 +199,18 @@ pub mod donatrade_program {
             share_amount as u128,
         )?;
 
-        // 2. Calculate Cost = e_shares * company.price_per_share
-        // Using e_mul (assuming new import works)
+        // 2. Convert Price to Encrypted for calculation
+        let e_price = as_euint128(
+            CpiContext::new(
+                inco_program.clone(),
+                Operation {
+                    signer: investor.clone(),
+                },
+            ),
+            company.price_per_share as u128,
+        )?;
+
+        // 3. Calculate Cost = e_shares * e_price
         let e_cost = e_mul(
             CpiContext::new(
                 inco_program.clone(),
@@ -288,11 +219,11 @@ pub mod donatrade_program {
                 },
             ),
             e_shares,
-            company.price_per_share,
+            e_price,
             0, // scalar_byte
         )?;
 
-        // 3. Subtract Cost from Investor Vault
+        // 4. Subtract Cost from Investor Vault
         ctx.accounts.investor_vault.cusd = e_sub(
             CpiContext::new(
                 inco_program.clone(),
@@ -305,7 +236,7 @@ pub mod donatrade_program {
             0,
         )?;
 
-        // 4. Add Cost to Company Balance
+        // 5. Add Cost to Company Balance
         company.cusd = e_add(
             CpiContext::new(
                 inco_program.clone(),
@@ -318,7 +249,7 @@ pub mod donatrade_program {
             0,
         )?;
 
-        // 5. Update Position
+        // 6. Update Position
         ctx.accounts.position.owner = ctx.accounts.investor.key();
         ctx.accounts.position.company_id = company.company_id;
         ctx.accounts.position.bump = ctx.bumps.position;
@@ -334,18 +265,11 @@ pub mod donatrade_program {
             0,
         )?;
 
-        // 6. Subtract Shares from Company
-        company.shares_available = e_sub(
-            CpiContext::new(
-                inco_program.clone(),
-                Operation {
-                    signer: investor.clone(),
-                },
-            ),
-            company.shares_available,
-            e_shares,
-            0,
-        )?;
+        // 7. Subtract Shares from Company (plaintext now)
+        company.shares_available = company
+            .shares_available
+            .checked_sub(share_amount)
+            .ok_or(DonatradeError::InsufficientShares)?;
 
         Ok(())
     }
@@ -442,7 +366,17 @@ pub mod donatrade_program {
             share_amount as u128,
         )?;
 
-        // 2. Value = shares * price
+        // 2. Value = shares * price (lift price to encrypted)
+        let e_price = as_euint128(
+            CpiContext::new(
+                inco_program.clone(),
+                Operation {
+                    signer: investor.clone(),
+                },
+            ),
+            company.price_per_share as u128,
+        )?;
+
         let e_val = e_mul(
             CpiContext::new(
                 inco_program.clone(),
@@ -451,8 +385,8 @@ pub mod donatrade_program {
                 },
             ),
             e_shares,
-            company.price_per_share, // Encrypted
-            0,                       // scalar_byte
+            e_price,
+            0, // scalar_byte
         )?;
 
         // Update Position and Company warehouse
@@ -492,58 +426,34 @@ pub mod donatrade_program {
             0,
         )?;
 
-        company.shares_available = e_add(
-            CpiContext::new(
-                inco_program.clone(),
-                Operation {
-                    signer: investor.clone(),
-                },
-            ),
-            company.shares_available,
-            e_shares,
-            0,
-        )?;
+        // Add shares back to company (plaintext now)
+        company.shares_available = company
+            .shares_available
+            .checked_add(share_amount)
+            .ok_or(DonatradeError::Overflow)?;
         Ok(())
     }
 
     pub fn update_offering(
         ctx: Context<UpdateOffering>,
-        new_price_handle: u128,
-        add_shares_handle: u128,
+        new_price: u64,
+        add_shares: u64,
         active: bool,
-        offering_url: Option<String>,
     ) -> Result<()> {
         let company = &mut ctx.accounts.company_account;
 
         // Update price
-        company.price_per_share = Euint128(new_price_handle);
+        company.price_per_share = new_price;
 
-        // Add shares
-        // Add shares
-        let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
-        let payer = ctx.accounts.company_admin.to_account_info();
-
-        let e_add_shares = Euint128(add_shares_handle);
-
-        company.shares_available = e_add(
-            CpiContext::new(
-                inco_program.clone(),
-                Operation {
-                    signer: payer.clone(),
-                },
-            ),
-            company.shares_available,
-            e_add_shares,
-            0,
-        )?;
+        // Add shares (plaintext now)
+        company.shares_available = company
+            .shares_available
+            .checked_add(add_shares)
+            .ok_or(DonatradeError::Overflow)?;
 
         company.active = active;
-        if let Some(url) = offering_url {
-            company.offering_url = url;
-        }
         Ok(())
     }
-
     pub fn transfer_shares<'info>(
         ctx: Context<'_, '_, '_, 'info, TransferShares<'info>>,
         share_amount: u64,
@@ -784,45 +694,17 @@ pub struct InitializeGlobalVault<'info> {
 
 #[derive(Accounts)]
 #[instruction(company_id: u64)]
-pub struct CreateCompany<'info> {
+pub struct ActivateCompany<'info> {
     #[account(mut)]
-    pub payer: Signer<'info>,
-    pub company_admin: UncheckedAccount<'info>,
-    #[account(init, payer = payer, space = 8 + 600, seeds = [b"company", company_id.to_le_bytes().as_ref()], bump)]
-    pub company_account: Account<'info, CompanyAccount>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-#[instruction(company_id: u64, initial_shares_handle: u128, price_per_share_handle: u128, offering_url: String, metadata_handle: u128)]
-pub struct SubmitApplication<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    #[account(mut)]
-    pub company_admin: Signer<'info>,
-
+    pub platform_admin: Signer<'info>, // Must be the platform admin
     #[account(
         init,
-        payer = payer,
-        space = 8 + 600,
+        payer = platform_admin,
+        space = 8 + 8 + 32 + 16 + 16 + 16 + 8 + 8 + 1 + 1 + 1, // ~117 bytes
         seeds = [b"company", company_id.to_le_bytes().as_ref()],
         bump
     )]
     pub company_account: Account<'info, CompanyAccount>,
-
-    /// CHECK: Validated by Inco program
-    #[account(mut)]
-    pub admin_allowance_account: UncheckedAccount<'info>,
-
-    /// CHECK: Validated by Inco program
-    #[account(mut)]
-    pub self_allowance_account: UncheckedAccount<'info>,
-
-    /// CHECK: The Platform Admin public key
-    pub platform_admin: UncheckedAccount<'info>,
-
-    #[account(address = INCO_LIGHTNING_ID)]
-    pub inco_lightning_program: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -930,16 +812,6 @@ pub struct WithdrawCompanyFunds<'info> {
     pub inco_lightning_program: AccountInfo<'info>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct ApproveCompany<'info> {
-    #[account(mut, address = "3va6LFUv6M21AnFwVETmKbEpJfNHD48D2Aegpwm1PGDh".parse::<Pubkey>().unwrap())]
-    pub platform_admin: Signer<'info>,
-    #[account(mut)]
-    pub company_account: Account<'info, CompanyAccount>,
-    #[account(address = INCO_LIGHTNING_ID)]
-    pub inco_lightning_program: AccountInfo<'info>,
 }
 
 #[derive(Accounts)]

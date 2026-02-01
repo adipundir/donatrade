@@ -1,23 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import {
-    X,
-    Shield,
-    Sparkles,
-    Plus,
-    Info,
-    Lock,
-    CheckCircle,
-    ArrowRight
-} from 'lucide-react';
-import {
-    getProgram,
-    buildSubmitApplicationTx,
-    PLATFORM_ADMIN
-} from '@/lib/solana';
-import { encryptMetadata } from '@/lib/encryption';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { X, Sparkles, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { createCompanyApplication } from '@/lib/actions/companies';
 
 interface RegisterCompanyModalProps {
     isOpen: boolean;
@@ -26,13 +12,12 @@ interface RegisterCompanyModalProps {
 }
 
 export function RegisterCompanyModal({ isOpen, onClose, onSuccess }: RegisterCompanyModalProps) {
-    const wallet = useWallet();
-    const { publicKey } = wallet;
-    const { connection } = useConnection();
+    const { publicKey, connected } = useWallet();
 
     const [isLoading, setIsLoading] = useState(false);
-    const [txSuccess, setTxSuccess] = useState('');
-    const [signature, setSignature] = useState('');
+    const [isSubmitted, setIsSubmitted] = useState(false);
+    const [message, setMessage] = useState('');
+    const [isError, setIsError] = useState(false);
     const [form, setForm] = useState({
         name: '',
         description: '',
@@ -42,12 +27,12 @@ export function RegisterCompanyModal({ isOpen, onClose, onSuccess }: RegisterCom
         offeringUrl: '',
     });
 
-    // Reset state when modal opens
     useEffect(() => {
         if (isOpen) {
-            setTxSuccess('');
-            setSignature('');
+            setMessage('');
+            setIsError(false);
             setIsLoading(false);
+            // Don't reset isSubmitted here - we want to preserve state
         }
     }, [isOpen]);
 
@@ -58,85 +43,48 @@ export function RegisterCompanyModal({ isOpen, onClose, onSuccess }: RegisterCom
 
     const handleRegister = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (isLoading) return;
-        if (!publicKey) {
-            setTxSuccess('Error: Wallet not connected');
+
+        if (isLoading || isSubmitted) return;
+        if (!connected || !publicKey) {
+            setMessage('Error: Wallet not connected');
+            setIsError(true);
             return;
         }
 
         setIsLoading(true);
+        setMessage('');
+        setIsError(false);
+
         try {
-            const program = getProgram(connection, wallet);
-            if (!program) throw new Error("Program not initialized");
+            if (!form.name || !form.description || !form.sector || !form.initialShares || !form.pricePerShare || !form.offeringUrl) {
+                throw new Error('Please fill in all required fields');
+            }
 
-            const companyId = Date.now();
-            console.log(`[DonaTrade] Registering company with ID: ${companyId}`);
+            const pricePerShare = Math.round(parseFloat(form.pricePerShare) * 1_000_000);
 
-            const initialShares = BigInt(form.initialShares);
-            const pricePerShare = BigInt(parseFloat(form.pricePerShare) * 1_000_000); // 6 decimals
-
-            // 1. Generate Metadata Key (Random 16-byte handle)
-            const metadataKeySeed = Math.floor(Math.random() * 1000000000).toString();
-            // In a real app we'd use a stronger random handle
-            const metadataKeyHandle = BigInt(metadataKeySeed);
-
-            // 2. Encrypted Metadata Blob (The entire form is private)
-            const metadataBlob = JSON.stringify({
+            const result = await createCompanyApplication({
+                walletAddress: publicKey.toBase58(),
                 name: form.name,
-                sector: form.sector,
                 description: form.description,
-                offeringUrl: form.offeringUrl
-            });
-            const encryptedMetadata = encryptMetadata(metadataBlob, metadataKeySeed);
-
-            // 3. Build & Submit Consolidated Application (Using wallet.sendTransaction for stability)
-            const txBuilder = buildSubmitApplicationTx(
-                program,
-                publicKey,
-                publicKey, // Creator is the company admin
-                companyId,
-                initialShares,
-                pricePerShare,
-                encryptedMetadata,
-                metadataKeyHandle
-            );
-
-            console.log("[DonaTrade] Submitting transaction via wallet.sendTransaction()...");
-
-            // Get the transaction object from Anchor builder
-            const transaction = await txBuilder.transaction();
-
-            // Explicitly set the fee payer and recent blockhash
-            transaction.feePayer = publicKey;
-            const { blockhash } = await connection.getLatestBlockhash('confirmed');
-            transaction.recentBlockhash = blockhash;
-
-            const sig = await wallet.sendTransaction(transaction, connection, {
-                skipPreflight: true
+                sector: form.sector,
+                offeringUrl: form.offeringUrl,
+                initialShares: parseInt(form.initialShares),
+                pricePerShare: pricePerShare,
             });
 
-            console.log("[DonaTrade] Transaction submitted, signature:", sig);
+            if (!result.success) {
+                throw new Error(result.error || 'Failed to submit application');
+            }
 
-            // Wait for confirmation
-            await connection.confirmTransaction(sig, 'confirmed');
-            console.log("[DonaTrade] Transaction confirmed!");
-
-            setSignature(sig);
-            setTxSuccess('Application Submitted Successfully!');
-
-            // Wait a moment then close/refresh
-            setTimeout(() => {
-                onSuccess();
-            }, 2000);
+            setIsSubmitted(true);
+            setMessage('Application submitted successfully!');
+            setIsError(false);
+            onSuccess(); // Notify parent to refresh state
 
         } catch (error: any) {
-            console.error("Registration failed:", error);
-            const msg = error.message || 'Transaction failed.';
-            setTxSuccess(`ERROR: ${msg}`);
-
-            if (error.logs) {
-                console.log("Program Logs:", error.logs);
-            }
+            console.error('[DonaTrade] Registration error:', error);
+            setMessage(error.message || 'An error occurred');
+            setIsError(true);
         } finally {
             setIsLoading(false);
         }
@@ -145,170 +93,142 @@ export function RegisterCompanyModal({ isOpen, onClose, onSuccess }: RegisterCom
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            {/* Modal Container: White bg, Thick Black Border, Deep Hard Shadow */}
-            <div className="bg-white border-4 border-black shadow-[8px_8px_0px_0px_#000] w-full max-w-2xl max-h-[90vh] overflow-y-auto relative animate-in zoom-in-95 duration-200">
-
-                {/* Header: Clean Comic Style */}
-                <div className="bg-white p-6 border-b-4 border-black flex justify-between items-center sticky top-0 z-10">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-accent text-white p-2 border-2 border-black">
-                            <Plus className="w-6 h-6" />
-                        </div>
-                        <h2 className="text-3xl font-bold tracking-wider text-black" style={{ fontFamily: "'Bangers', cursive" }}>
-                            REGISTER COMPANY
-                        </h2>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="btn btn-ghost hover:bg-black/5 p-2 rounded-full"
-                        disabled={isLoading}
-                    >
-                        <X className="w-8 h-8 text-black" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="w-full max-w-2xl bg-background border-4 border-foreground shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden relative animate-pop">
+                {/* Header */}
+                <div className="flex items-center justify-between p-5 border-b-3 border-foreground">
+                    <h2 className="text-2xl uppercase tracking-wider" style={{ fontFamily: "'Bangers', cursive" }}>
+                        {isSubmitted ? 'Application Submitted' : 'Register Your Company'}
+                    </h2>
+                    <button onClick={onClose} className="p-2 hover:bg-surface transition-colors border-2 border-foreground">
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* Content */}
-                <div className="p-8">
-                    {signature ? (
-                        <div className="text-center py-12">
-                            <div className="w-20 h-20 bg-green-100 border-4 border-black rounded-full flex items-center justify-center mx-auto mb-6">
-                                <CheckCircle className="w-10 h-10 text-green-600" />
-                            </div>
-                            <h3 className="text-3xl mb-2 font-bold text-black" style={{ fontFamily: "'Bangers', cursive" }}>
-                                APPLICATION SUBMITTED
-                            </h3>
-                            <p className="text-lg text-secondary mb-8 font-mono">
-                                Request sent to platform admin.
-                            </p>
-                            <p className="text-xs text-secondary opacity-50">
-                                Redirecting...
-                            </p>
+                {isSubmitted ? (
+                    /* Success State - Keep modal open */
+                    <div className="p-8 text-center">
+                        <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-accent/20 flex items-center justify-center">
+                            <Clock className="w-10 h-10 text-accent" />
                         </div>
-                    ) : (
-                        <form onSubmit={handleRegister} className="space-y-6">
-                            {txSuccess && txSuccess.startsWith('ERROR') && (
-                                <div className="p-4 bg-error/10 border-2 border-error text-error font-bold">
-                                    {txSuccess}
-                                </div>
-                            )}
-
-                            <div className="grid md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-lg font-bold uppercase tracking-wide" style={{ fontFamily: "'Bangers', cursive" }}>
-                                        Company Name
-                                    </label>
-                                    <input
-                                        required
-                                        name="name"
-                                        value={form.name}
-                                        onChange={handleInputChange}
-                                        placeholder="e.g. Acme Space Corp"
-                                        className="input w-full bg-white border-3 border-black p-3 text-lg focus:shadow-[4px_4px_0px_0px_#0066FF] transition-all"
-                                        disabled={isLoading}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-lg font-bold uppercase tracking-wide" style={{ fontFamily: "'Bangers', cursive" }}>
-                                        Sector
-                                    </label>
-                                    <input
-                                        required
-                                        name="sector"
-                                        value={form.sector}
-                                        onChange={handleInputChange}
-                                        placeholder="e.g. Aerospace"
-                                        className="input w-full bg-white border-3 border-black p-3 text-lg focus:shadow-[4px_4px_0px_0px_#0066FF] transition-all"
-                                        disabled={isLoading}
-                                    />
-                                </div>
+                        <h3 className="text-2xl mb-3" style={{ fontFamily: "'Bangers', cursive" }}>
+                            Awaiting Admin Review
+                        </h3>
+                        <p className="text-secondary mb-6" style={{ fontFamily: "'Comic Neue', cursive" }}>
+                            Your application for <span className="font-bold text-foreground">{form.name}</span> has been submitted.
+                            You'll be notified once it's approved.
+                        </p>
+                        <button
+                            onClick={onClose}
+                            className="btn btn-primary"
+                        >
+                            Close
+                        </button>
+                    </div>
+                ) : (
+                    /* Form */
+                    <form onSubmit={handleRegister} className="p-6 space-y-5">
+                        {message && (
+                            <div className={`p-4 border-3 ${isError ? 'border-warning bg-warning-light' : 'border-accent bg-accent-light'} flex items-center gap-3`}>
+                                {isError ? <AlertCircle className="w-5 h-5 text-warning shrink-0" /> : <CheckCircle className="w-5 h-5 text-accent shrink-0" />}
+                                <p className="font-bold" style={{ fontFamily: "'Bangers', cursive" }}>{message}</p>
                             </div>
+                        )}
 
-                            <div className="space-y-2">
-                                <label className="text-lg font-bold uppercase tracking-wide" style={{ fontFamily: "'Bangers', cursive" }}>
-                                    Description
-                                </label>
-                                <textarea
-                                    required
-                                    name="description"
-                                    value={form.description}
+                        <div className="grid grid-cols-2 gap-5">
+                            <div className="col-span-2">
+                                <label className="block text-sm font-bold uppercase mb-2 tracking-wide">Company Name</label>
+                                <input
+                                    type="text"
+                                    name="name"
+                                    value={form.name}
                                     onChange={handleInputChange}
-                                    placeholder="Briefly describe your company's mission..."
-                                    className="input w-full min-h-[120px] bg-white border-3 border-black p-3 text-lg focus:shadow-[4px_4px_0px_0px_#0066FF] transition-all"
-                                    disabled={isLoading}
+                                    placeholder="e.g., Acme Corp"
+                                    className="input w-full"
+                                    required
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-lg font-bold uppercase tracking-wide" style={{ fontFamily: "'Bangers', cursive" }}>
-                                    Offering URL
-                                </label>
+                            <div>
+                                <label className="block text-sm font-bold uppercase mb-2 tracking-wide">Sector</label>
                                 <input
+                                    type="text"
+                                    name="sector"
+                                    value={form.sector}
+                                    onChange={handleInputChange}
+                                    placeholder="e.g., Technology"
+                                    className="input w-full"
                                     required
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-bold uppercase mb-2 tracking-wide">Offering URL</label>
+                                <input
+                                    type="url"
                                     name="offeringUrl"
                                     value={form.offeringUrl}
                                     onChange={handleInputChange}
-                                    placeholder="https://docsend.com/..."
-                                    className="input w-full bg-white border-3 border-black p-3 text-lg focus:shadow-[4px_4px_0px_0px_#0066FF] transition-all"
-                                    disabled={isLoading}
+                                    placeholder="https://..."
+                                    className="input w-full"
+                                    required
                                 />
                             </div>
+                        </div>
 
-                            <div className="grid md:grid-cols-2 gap-6 pt-2">
-                                <div className="space-y-2">
-                                    <label className="text-lg font-bold uppercase tracking-wide" style={{ fontFamily: "'Bangers', cursive" }}>
-                                        Initial Shares
-                                    </label>
-                                    <input
-                                        required
-                                        type="number"
-                                        name="initialShares"
-                                        value={form.initialShares}
-                                        onChange={handleInputChange}
-                                        placeholder="1,000,000"
-                                        className="input w-full bg-white border-3 border-black p-3 text-lg focus:shadow-[4px_4px_0px_0px_#0066FF] transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                        min="1"
-                                        disabled={isLoading}
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-lg font-bold uppercase tracking-wide" style={{ fontFamily: "'Bangers', cursive" }}>
-                                        Price (USDC)
-                                    </label>
-                                    <input
-                                        required
-                                        type="number"
-                                        step="0.01"
-                                        name="pricePerShare"
-                                        value={form.pricePerShare}
-                                        onChange={handleInputChange}
-                                        placeholder="10.00"
-                                        className="input w-full bg-white border-3 border-black p-3 text-lg focus:shadow-[4px_4px_0px_0px_#0066FF] transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                        min="0.01"
-                                        disabled={isLoading}
-                                    />
-                                </div>
+                        <div>
+                            <label className="block text-sm font-bold uppercase mb-2 tracking-wide">Description</label>
+                            <textarea
+                                name="description"
+                                value={form.description}
+                                onChange={handleInputChange}
+                                placeholder="Describe your company and offering..."
+                                rows={3}
+                                className="input w-full resize-none"
+                                required
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-5">
+                            <div>
+                                <label className="block text-sm font-bold uppercase mb-2 tracking-wide">Initial Shares</label>
+                                <input
+                                    type="number"
+                                    name="initialShares"
+                                    value={form.initialShares}
+                                    onChange={handleInputChange}
+                                    placeholder="e.g., 1000000"
+                                    min="1"
+                                    className="input w-full"
+                                    required
+                                />
                             </div>
-
-                            <div className="p-4 bg-blue-50 border-2 border-black">
-                                <p className="text-xs text-secondary font-mono">
-                                    <strong>Privacy Notice:</strong> All details are client-side encrypted. Only you and Donatrade can access this data until your application is approved.
-                                </p>
+                            <div>
+                                <label className="block text-sm font-bold uppercase mb-2 tracking-wide">Price per Share (USDC)</label>
+                                <input
+                                    type="number"
+                                    name="pricePerShare"
+                                    value={form.pricePerShare}
+                                    onChange={handleInputChange}
+                                    placeholder="e.g., 10.00"
+                                    step="0.01"
+                                    min="0.01"
+                                    className="input w-full"
+                                    required
+                                />
                             </div>
+                        </div>
 
-                            <button
-                                type="submit"
-                                disabled={isLoading}
-                                className="btn btn-primary w-full py-4 text-xl tracking-widest flex items-center justify-center gap-2"
-                                style={{ fontFamily: "'Bangers', cursive" }}
-                            >
-                                <span className="relative z-10 flex items-center justify-center gap-3">
-                                    {isLoading ? 'PROCESSING...' : 'SUBMIT APPLICATION'}
-                                </span>
-                            </button>
-                        </form>
-                    )}
-                </div>
+                        <button
+                            type="submit"
+                            disabled={isLoading || !connected}
+                            className="btn btn-primary w-full py-4 text-lg disabled:opacity-50 mt-4"
+                        >
+                            {!connected ? 'CONNECT WALLET FIRST' : isLoading ? 'SUBMITTING...' : 'SUBMIT APPLICATION'}
+                            {connected && !isLoading && <Sparkles className="w-5 h-5 ml-2" />}
+                        </button>
+                    </form>
+                )}
             </div>
         </div>
     );
