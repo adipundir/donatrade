@@ -6,7 +6,7 @@ resolution = true
 skip-lint = true
 
 [programs.devnet]
-donatrade_program = "9MBsFdzmTYU93kDseX9mczoYPChfaoSMU3uS9tu5e4ax"
+donatrade_program = "2CuAjUWhAPfFuY6tCxxpqjnb43yZyRXnBM6fF7M6Y8ho"
 inco_lightning = "5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj"
 
 [registry]

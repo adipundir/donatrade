@@ -43,10 +43,12 @@ export interface CompanyAccount {
     sharesAvailable: number;
     /** Price per share in USDC (6 decimals) */
     pricePerShare: number;
-    /** SHA-256 hash of the legal investment agreement */
-    legalAgreementHash: number[];
+    /** Link to the legal investment agreement */
+    legalAgreementLink: string;
     /** Whether this company is active and accepting investments */
     active: boolean;
+    /** Explicit benefits text */
+    benefits: string;
     /** PDA bump seed */
     bump: number;
 }
@@ -77,6 +79,19 @@ export interface GlobalProgramVaultAccount {
 }
 
 /**
+ * Offer Account - P2P share offering
+ */
+export interface OfferAccount {
+    offerId: number;
+    seller: string;
+    companyId: number;
+    shareAmount: number;
+    pricePerShare: number;
+    isActive: boolean;
+    bump: number;
+}
+
+/**
  * Company data for UI display (enhanced with UI-specific fields).
  */
 export interface Company {
@@ -90,8 +105,8 @@ export interface Company {
     companyId: number;
     /** Whether accepting new investments */
     active: boolean;
-    /** Legal agreement hash (hex string) */
-    legalAgreementHash: string;
+    /** Link to legal agreement */
+    legalAgreementLink: string;
     /** Total shares issued */
     totalSharesIssued: number;
     /** Shares still available for purchase */
@@ -100,10 +115,10 @@ export interface Company {
     pricePerShare: number;
     /** Company logo URL (optional) */
     logo?: string;
-    /** Last date to apply for the offering (ISO date string) */
-    lastDateToApply?: string;
     /** Sector/industry (optional) */
     sector?: string;
+    /** Explicit benefits text */
+    benefits?: string;
 }
 
 /**

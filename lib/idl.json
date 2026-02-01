@@ -1,4 +1,3 @@
-export const IDL =
 {
   "address": "2CuAjUWhAPfFuY6tCxxpqjnb43yZyRXnBM6fF7M6Y8ho",
   "metadata": {
@@ -8,101 +7,6 @@ export const IDL =
     "description": "Donatrade - Privacy-First Private Investment Platform on Solana"
   },
   "instructions": [
-    {
-      "name": "submit_application",
-      "discriminator": [
-        27,
-        71,
-        89,
-        170,
-        144,
-        203,
-        50,
-        8
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "company_admin",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "company_account",
-          "writable": true
-        },
-        {
-          "name": "admin_allowance_account",
-          "writable": true
-        },
-        {
-          "name": "self_allowance_account",
-          "writable": true
-        },
-        {
-          "name": "platform_admin"
-        },
-        {
-          "name": "inco_lightning_program",
-          "address": "5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "company_id",
-          "type": "u64"
-        },
-        {
-          "name": "initial_shares",
-          "type": "u64"
-        },
-        {
-          "name": "price_per_share",
-          "type": "u64"
-        },
-        {
-          "name": "offering_url",
-          "type": "string"
-        },
-        {
-          "name": "metadata_handle",
-          "type": "u128"
-        }
-      ]
-    },
-    {
-      "name": "approve_company",
-      "discriminator": [
-        168,
-        137,
-        195,
-        75,
-        165,
-        79,
-        119,
-        142
-      ],
-      "accounts": [
-        {
-          "name": "platform_admin",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "company_account",
-          "writable": true
-        }
-      ],
-      "args": []
-    },
     {
       "name": "authorize_decryption",
       "discriminator": [
@@ -120,9 +24,6 @@ export const IDL =
           "name": "investor",
           "writable": true,
           "signer": true
-        },
-        {
-          "name": "allowed_address"
         },
         {
           "name": "allowance_account",
@@ -248,7 +149,7 @@ export const IDL =
       ],
       "accounts": [
         {
-          "name": "payer",
+          "name": "admin",
           "writable": true,
           "signer": true
         },
@@ -298,83 +199,12 @@ export const IDL =
           "type": "u64"
         },
         {
-          "name": "offering_url",
+          "name": "legal_agreement_link",
           "type": "string"
         },
         {
-          "name": "metadata_key",
-          "type": {
-            "defined": {
-              "name": "Euint128"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "create_offer",
-      "discriminator": [
-        237,
-        233,
-        192,
-        168,
-        248,
-        7,
-        249,
-        241
-      ],
-      "accounts": [
-        {
-          "name": "seller",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "company_account"
-        },
-        {
-          "name": "offer_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  111,
-                  102,
-                  102,
-                  101,
-                  114
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "seller"
-              },
-              {
-                "kind": "arg",
-                "path": "offer_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "offer_id",
-          "type": "u64"
-        },
-        {
-          "name": "share_amount",
-          "type": "u64"
-        },
-        {
-          "name": "price_per_share",
-          "type": "u64"
+          "name": "benefits",
+          "type": "string"
         }
       ]
     },
@@ -445,47 +275,6 @@ export const IDL =
           "type": "u64"
         }
       ]
-    },
-    {
-      "name": "execute_trade",
-      "discriminator": [
-        77,
-        16,
-        192,
-        135,
-        13,
-        0,
-        106,
-        97
-      ],
-      "accounts": [
-        {
-          "name": "buyer",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "offer_account",
-          "writable": true
-        },
-        {
-          "name": "buyer_vault",
-          "writable": true
-        },
-        {
-          "name": "seller_vault",
-          "writable": true
-        },
-        {
-          "name": "inco_lightning_program",
-          "address": "5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": []
     },
     {
       "name": "initialize_global_vault",
@@ -791,7 +580,13 @@ export const IDL =
           "type": "bool"
         },
         {
-          "name": "offering_url",
+          "name": "legal_agreement_link",
+          "type": {
+            "option": "string"
+          }
+        },
+        {
+          "name": "benefits",
           "type": {
             "option": "string"
           }
@@ -892,107 +687,6 @@ export const IDL =
           "type": "u64"
         }
       ]
-    },
-    {
-      "name": "withdraw_company_funds",
-      "discriminator": [
-        215,
-        204,
-        85,
-        105,
-        209,
-        30,
-        70,
-        151
-      ],
-      "accounts": [
-        {
-          "name": "company_admin",
-          "writable": true,
-          "signer": true,
-          "relations": [
-            "company_account"
-          ]
-        },
-        {
-          "name": "company_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  109,
-                  112,
-                  97,
-                  110,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "company_account.company_id",
-                "account": "CompanyAccount"
-              }
-            ]
-          }
-        },
-        {
-          "name": "global_vault",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  97,
-                  117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "admin_token_account",
-          "writable": true
-        },
-        {
-          "name": "vault_token_account",
-          "writable": true
-        },
-        {
-          "name": "inco_lightning_program",
-          "address": "5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj"
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "amount",
-          "type": "u64"
-        }
-      ]
     }
   ],
   "accounts": [
@@ -1036,19 +730,6 @@ export const IDL =
       ]
     },
     {
-      "name": "OfferAccount",
-      "discriminator": [
-        152,
-        98,
-        9,
-        183,
-        115,
-        190,
-        31,
-        201
-      ]
-    },
-    {
       "name": "PositionAccount",
       "discriminator": [
         60,
@@ -1065,28 +746,23 @@ export const IDL =
   "errors": [
     {
       "code": 6000,
-      "name": "Uninitialized",
-      "msg": "Account is not initialized"
+      "name": "Inactive",
+      "msg": "Inactive"
     },
     {
       "code": 6001,
+      "name": "InsufficientShares",
+      "msg": "Insufficient shares"
+    },
+    {
+      "code": 6002,
       "name": "Overflow",
       "msg": "Arithmetic overflow"
     },
     {
-      "code": 6002,
-      "name": "Inactive",
-      "msg": "Company is inactive"
-    },
-    {
       "code": 6003,
-      "name": "InsufficientShares",
-      "msg": "Insufficient shares available"
-    },
-    {
-      "code": 6004,
-      "name": "InsufficientFunds",
-      "msg": "Insufficient funds"
+      "name": "Unauthorized",
+      "msg": "Unauthorized"
     }
   ],
   "types": [
@@ -1124,20 +800,12 @@ export const IDL =
             "type": "bool"
           },
           {
-            "name": "is_approved",
-            "type": "bool"
-          },
-          {
-            "name": "offering_url",
+            "name": "legal_agreement_link",
             "type": "string"
           },
           {
-            "name": "metadata_key",
-            "type": {
-              "defined": {
-                "name": "Euint128"
-              }
-            }
+            "name": "benefits",
+            "type": "string"
           },
           {
             "name": "bump",
@@ -1151,10 +819,7 @@ export const IDL =
       "type": {
         "kind": "struct",
         "fields": [
-          {
-            "name": "handle",
-            "type": "u128"
-          }
+          "u128"
         ]
       }
     },
@@ -1199,42 +864,6 @@ export const IDL =
       }
     },
     {
-      "name": "OfferAccount",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "offer_id",
-            "type": "u64"
-          },
-          {
-            "name": "seller",
-            "type": "pubkey"
-          },
-          {
-            "name": "company_id",
-            "type": "u64"
-          },
-          {
-            "name": "share_amount",
-            "type": "u64"
-          },
-          {
-            "name": "price_per_share",
-            "type": "u64"
-          },
-          {
-            "name": "is_active",
-            "type": "bool"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
       "name": "PositionAccount",
       "type": {
         "kind": "struct",
@@ -1263,4 +892,4 @@ export const IDL =
       }
     }
   ]
-};
+}

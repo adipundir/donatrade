@@ -1,25 +1,163 @@
 'use client';
 
-import { useState } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useState, useEffect } from 'react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Shield, Building2, ArrowRight, Lock, Calendar, TrendingUp, DollarSign } from 'lucide-react';
 import { PrivacyBadge } from '@/components/PrivacyBadge';
-import { MOCK_COMPANIES, formatPricePerShare } from '@/lib/mockData';
+import { formatPricePerShare } from '@/lib/mockData';
+import { getProgram, getCompanyPDA, fetchCompanyByAdmin, fetchAllCompanies } from '@/lib/solana';
+import { ApplicationReviewModal } from '@/components/ApplicationReviewModal';
+import { RegisterCompanyModal } from '@/components/RegisterCompanyModal';
+import { PublicKey } from '@solana/web3.js';
 
 /**
  * Companies Page - Browse private companies with active share offerings.
  */
 export default function CompaniesPage() {
-    const { connected } = useWallet();
+    const wallet = useWallet();
+    const { connected, publicKey } = wallet;
+    const { connection } = useConnection();
     const router = useRouter();
     const [activeTab, setActiveTab] = useState<'ongoing' | 'closed'>('ongoing');
+    const [companies, setCompanies] = useState<any[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [userApplication, setUserApplication] = useState<any | null>(null);
+    const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+    const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
 
-    const ongoingCompanies = MOCK_COMPANIES.filter(c => c.active);
-    const closedCompanies = MOCK_COMPANIES.filter(c => !c.active);
+    useEffect(() => {
+        if (connected && publicKey) {
+            fetchCompanies();
+            checkUserApplication();
+        }
+    }, [connected, publicKey]);
 
-    // Require wallet connection
+    const checkUserApplication = async () => {
+        if (!publicKey || !connected) return;
+        try {
+            const appResult = await fetchCompanyByAdmin(connection, publicKey);
+            if (!appResult) return;
+
+            const program = getProgram(connection, wallet);
+            if (!program) return;
+
+            try {
+                // TIGHT TRY-CATCH for the Anchor fetch to prevent "Invalid bool" crash
+                const data = await (program.account as any).companyAccount.fetch(appResult.pubkey);
+                console.log("[DonaTrade] User application decoded:", data.companyId?.toString());
+                setUserApplication(data);
+            } catch (decodeErr) {
+                console.warn("[DonaTrade] Anchor decode failed, trying manual fallback:", decodeErr);
+
+                // FALLBACK: Directly parse from account buffer bytes
+                if (appResult.data && appResult.data.length >= 67) {
+                    try {
+                        const buf = appResult.data;
+                        const len = buf.length;
+                        console.log("[DonaTrade] Manual Fallback for Buffer Length:", len);
+
+                        // 1. Company ID (u64, LE, Offset 8)
+                        let cid = BigInt(0);
+                        const idBuf = buf.slice(8, 16);
+                        for (let i = 7; i >= 0; i--) cid = (cid << BigInt(8)) | BigInt(idBuf[i]);
+
+                        // 2. Company Admin (Pubkey, 32 bytes, Offset 16)
+                        const adminBytes = buf.slice(16, 48);
+                        const adminPubkey = new PublicKey(adminBytes);
+
+                        // 3. Flags (Active/Approved)
+                        // Layout 82: 8(disc)+8(ID)+32(Admin)+16(cusd)+8(S)+8(P)+1(A)+1(App) = 82
+                        let active = false;
+                        let approved = false;
+                        let handleBytes: Uint8Array | null = null;
+
+                        if (len === 82) {
+                            console.warn("[DonaTrade] IGNORING Legacy 82-byte account to allow fresh registration.");
+                            return; // EXIT EARLY: Treat as if no application exists
+                        } else if (len >= 130) {
+                            // Layout Update with Encrypted Fields:
+                            // Disc(8) + ID(8) + Admin(32) + CUSD(16) + Share(16) + Price(16) + SharePub(8) + PricePub(8) + Active(1) + App(1) = 114 bytes fixed prefix
+                            active = buf[112] === 1;
+                            approved = buf[113] === 1;
+                            const handleOffset = len - 17; // metadata_key is still at end - 17
+                            handleBytes = buf.slice(handleOffset, handleOffset + 16);
+                        }
+
+                        setUserApplication({
+                            pubkey: appResult.pubkey,
+                            companyId: cid,
+                            companyAdmin: adminPubkey,
+                            metadataKey: handleBytes,
+                            isApproved: approved,
+                            pricePerShare: BigInt(0),
+                            offeringUrl: "",
+                            active: active,
+                            cusd: null
+                        } as any);
+
+                        console.log("[DonaTrade] Fallback SUCCESS. ID:", cid.toString(), "Approved:", approved);
+                    } catch (fallbackErr) {
+                        console.error("[DonaTrade] Fallback parsing failed:", fallbackErr);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("[DonaTrade] Error checking user application:", e);
+        }
+    };
+
+    const fetchCompanies = async () => {
+        setIsLoading(true);
+        try {
+            if (!wallet.signTransaction || !wallet.signAllTransactions) {
+                setCompanies([]); // No mock data fallback
+                setIsLoading(false);
+                return;
+            }
+
+            const program = getProgram(connection, wallet);
+            if (!program) return;
+
+            const accounts = await fetchAllCompanies(connection);
+            const fetched = [];
+
+            for (const account of accounts) {
+                try {
+                    const data = await (program.account as any).companyAccount.fetch(account.pubkey);
+                    if (data && data.isApproved) {
+                        const companyId = Number(data.companyId);
+
+                        // Enforce real data only. 
+                        // Name/Desc are encrypted or generic if not decrypted.
+                        fetched.push({
+                            ...data,
+                            companyId: companyId,
+                            name: `Private Company #${companyId}`,
+                            description: "Confidential investment opportunity.",
+                            sector: "Private",
+                            pricePerShare: data.pricePerShare ? Number(data.pricePerShare) : 0,
+                            sharesAvailable: Number(data.sharesAvailable || 0),
+                            totalSharesIssued: 1000000,
+                            active: !!data.active
+                        });
+                    }
+                } catch (decodeErr) {
+                    // Skip accounts that fail to decode in the public list
+                }
+            }
+            setCompanies(fetched);
+        } catch (e) {
+            console.error("[DonaTrade] Error fetching companies:", e);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const ongoingCompanies = companies.filter(c => c.active);
+    const closedCompanies = companies.filter(c => !c.active);
+
     if (!connected) {
         return (
             <div className="min-h-screen pt-24 hero-comic">
@@ -60,20 +198,49 @@ export default function CompaniesPage() {
                                 Invest in top private companies. Your holdings stay encrypted.
                             </p>
                         </div>
-                        <Link href="/deposit" className="btn btn-primary">
-                            <DollarSign className="w-4 h-4" />
-                            Fund Vault
-                        </Link>
+                        {userApplication ? (
+                            <button
+                                onClick={() => setIsReviewModalOpen(true)}
+                                className="btn btn-secondary border-accent text-accent"
+                            >
+                                <Building2 className="w-4 h-4 mr-1" />
+                                Review Application
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => setIsRegisterModalOpen(true)}
+                                className="btn btn-primary"
+                            >
+                                <Building2 className="w-4 h-4 mr-1" />
+                                Register Company
+                            </button>
+                        )}
                     </div>
                 </div>
+
+                <RegisterCompanyModal
+                    isOpen={isRegisterModalOpen}
+                    onClose={() => setIsRegisterModalOpen(false)}
+                    onSuccess={() => {
+                        setIsRegisterModalOpen(false);
+                        fetchCompanies();
+                        checkUserApplication();
+                    }}
+                />
+
+                <ApplicationReviewModal
+                    isOpen={isReviewModalOpen}
+                    onClose={() => setIsReviewModalOpen(false)}
+                    application={userApplication}
+                />
 
                 {/* Tabs */}
                 <div className="flex border-b-3 border-foreground mb-8">
                     <button
                         onClick={() => setActiveTab('ongoing')}
                         className={`py-3 px-6 font-bold uppercase tracking-wide transition-colors ${activeTab === 'ongoing'
-                                ? 'bg-accent text-white'
-                                : 'hover:bg-surface'
+                            ? 'bg-accent text-white'
+                            : 'hover:bg-surface'
                             }`}
                     >
                         Active Offerings ({ongoingCompanies.length})
@@ -81,8 +248,8 @@ export default function CompaniesPage() {
                     <button
                         onClick={() => setActiveTab('closed')}
                         className={`py-3 px-6 font-bold uppercase tracking-wide transition-colors ${activeTab === 'closed'
-                                ? 'bg-accent text-white'
-                                : 'hover:bg-surface'
+                            ? 'bg-accent text-white'
+                            : 'hover:bg-surface'
                             }`}
                     >
                         Closed ({closedCompanies.length})
@@ -138,6 +305,8 @@ export default function CompaniesPage() {
                                     <p className="text-foreground text-sm mb-4 line-clamp-2 opacity-90" style={{ fontFamily: "'Comic Neue', cursive" }}>
                                         {company.description}
                                     </p>
+
+                                    {/* isApproved debug (optional, not needed for production if filtered) */}
 
                                     {/* Price and Availability */}
                                     <div className="grid grid-cols-2 gap-3 mb-4">

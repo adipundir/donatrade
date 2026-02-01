@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { PublicKey } from '@solana/web3.js';
+import { PublicKey, Transaction } from '@solana/web3.js';
+import { createAssociatedTokenAccountInstruction, ASSOCIATED_TOKEN_PROGRAM_ID as SPL_ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
     X,
     Lock,
@@ -41,7 +42,8 @@ interface VaultModalProps {
 
 export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
     const { connection } = useConnection();
-    const { publicKey, connected, signTransaction, signAllTransactions, signMessage } = useWallet();
+    const wallet = useWallet();
+    const { publicKey, connected, signTransaction, signAllTransactions, signMessage } = wallet;
 
     const [balance, setBalance] = useState<bigint | null>(null);
     const [rawVault, setRawVault] = useState<any>(null);
@@ -53,7 +55,6 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
     const [txStatus, setTxStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const [txMessage, setTxMessage] = useState('');
     const [txSignature, setTxSignature] = useState<string | null>(null);
-    const [needsInit, setNeedsInit] = useState(false);
 
     useEffect(() => {
         if (isOpen && connected && publicKey) {
@@ -71,7 +72,7 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
         if (!publicKey) return;
         // Silent fetch
         try {
-            const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions });
+            const program = getProgram(connection, wallet);
             if (program) {
                 const vault = await fetchInvestorVault(program, publicKey);
                 setRawVault(vault);
@@ -81,6 +82,7 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                 } else {
                     setBalance(BigInt(0));
                 }
+                setShowBalance(false); // Always hide by default as requested
             }
         } catch (error) {
             console.error("Failed to fetch balance:", error);
@@ -94,7 +96,7 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
         setIsLoading(true);
         setTxStatus('idle');
         try {
-            const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions }) as any;
+            const program = getProgram(connection, wallet) as any;
             if (!program) throw new Error("Program not initialized");
 
             const handleStr = bytesToHandle(rawVault.cusd);
@@ -108,12 +110,14 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                 const authTxBuilder = await buildAuthorizeDecryptionTx(
                     program,
                     publicKey,
-                    handle
+                    handle,
+                    publicKey
                 );
-                const authTxSig = await authTxBuilder.rpc();
-                setTxSignature(authTxSig);
-                setTxStatus('success');
-                setTxMessage(`Access granted!`);
+                const transaction = await authTxBuilder.transaction();
+                const authTxSig = await wallet.sendTransaction(transaction, connection);
+                // Wait for confirmation to ensure the TEE can see the new allowance account
+                await connection.confirmTransaction(authTxSig, 'confirmed');
+                setTxMessage(`Access granted! Proceeding with decryption...`);
             }
 
             // Actual decryption
@@ -125,10 +129,10 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
             if (decryptedValue !== null) {
                 setBalance(decryptedValue);
                 setShowBalance(true);
-                setTxStatus('idle'); // Clear any status instead of showing success
+                setTxStatus('idle'); // Clear any status
             } else {
                 setTxStatus('error');
-                setTxMessage('Decryption failed even after authorization. Please try again.');
+                setTxMessage('Decryption failed. Please try again.');
             }
         } catch (error: any) {
             console.error("Decryption failed:", error);
@@ -149,50 +153,66 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
         setTxSignature(null);
 
         try {
-            const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions }) as any;
+            const program = getProgram(connection, wallet) as any;
             if (!program) throw new Error("Program not initialized");
 
             const amountBigInt = BigInt(Math.floor(parseFloat(amount) * 1_000_000));
             const userUsdc = await getAssociatedTokenAddress(publicKey);
             const [vaultPDA] = getInvestorVaultPDA(publicKey);
 
-            // For deposit, we also need the global vault's token account
+            // For platform operations, we need the global vault config
             const [globalVaultConfig] = getGlobalVaultPDA();
-            let vaultTokenAccount;
 
-            try {
-                // Check if global vault exists
-                const configData = await (program.account as any).globalProgramVault.fetch(globalVaultConfig);
-                vaultTokenAccount = configData.usdcTokenAccount;
-            } catch (e: any) {
-                console.warn("Global vault info fetch failed:", e);
-                setNeedsInit(true);
-                throw new Error("Platform setup required. Please use the 'Initialize Platform' button below.");
+            // Derive ATA for the Global Vault PDA
+            const [vaultTokenAccount] = PublicKey.findProgramAddressSync(
+                [globalVaultConfig.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), USDC_MINT.toBuffer()],
+                SPL_ASSOCIATED_TOKEN_PROGRAM_ID
+            );
+
+            const tx = new Transaction();
+
+            // 1. Check if platform initialization is needed
+            const globalVaultInfo = await connection.getAccountInfo(globalVaultConfig);
+            if (!globalVaultInfo) {
+                console.log("[DonaTrade] Automating platform initialization...");
+
+                // Add ATA creation if missing
+                const vaultATAInfo = await connection.getAccountInfo(vaultTokenAccount);
+                if (!vaultATAInfo) {
+                    tx.add(createAssociatedTokenAccountInstruction(
+                        publicKey, // payer
+                        vaultTokenAccount,
+                        globalVaultConfig, // owner
+                        USDC_MINT
+                    ));
+                }
+
+                // Add program initialization
+                const initInstr = await program.methods
+                    .initializeGlobalVault()
+                    .accounts({
+                        admin: publicKey,
+                        globalVault: globalVaultConfig,
+                        usdcTokenAccount: vaultTokenAccount,
+                        systemProgram: SystemProgram.programId,
+                    })
+                    .instruction();
+                tx.add(initInstr);
             }
 
-            // Deterministic handle based on the vault's cUSD data
-            // This assumes rawVault is up-to-date or we fetch it again
-            const currentRawVault = await fetchInvestorVault(program, publicKey);
-            if (!currentRawVault && activeTab === 'withdraw') {
-                throw new Error("No vault found to withdraw from.");
-            }
-            const handleStr = currentRawVault ? bytesToHandle(currentRawVault.cusd) : '0'; // If no vault, handle is 0 for deposit init
-            const handleId = BigInt(handleStr);
-            const [allowancePDA] = getAllowancePDA(handleId, publicKey);
-
-            let tx;
+            // 2. Add the actual action (Deposit or Withdraw)
             if (activeTab === 'deposit') {
-                tx = await buildDepositTx(
+                const depositInstr = await buildDepositTx(
                     program,
                     publicKey,
                     vaultPDA,
                     userUsdc,
                     vaultTokenAccount,
-                    Math.floor(parseFloat(amount) * 1_000_000)
-                );
+                    amountBigInt
+                ).instruction();
+                tx.add(depositInstr);
             } else {
-                tx = await (program as any).methods
-                    .withdraw(new BN(amountBigInt.toString()))
+                const withdrawInstr = await (program.methods as any).withdraw(new BN(amountBigInt.toString()))
                     .accounts({
                         investor: publicKey,
                         investorVault: vaultPDA,
@@ -202,78 +222,37 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                         incoLightningProgram: INCO_LIGHTNING_ID,
                         tokenProgram: TOKEN_PROGRAM_ID,
                         systemProgram: SystemProgram.programId,
-                    });
+                    })
+                    .instruction();
+                tx.add(withdrawInstr);
             }
 
+            try {
+                const signature = await wallet.sendTransaction(tx, connection);
+                console.log("[DonaTrade] Transaction submitted:", signature);
+                await connection.confirmTransaction(signature, 'confirmed');
 
-
-            const signature = await tx.rpc();
-
-            setTxSignature(signature);
-            setTxStatus('success');
-            setTxMessage(`Transaction confirmed!`);
-            setAmount('');
-            refreshBalance();
+                setTxSignature(signature);
+                setTxStatus('success');
+                setTxMessage(`Transaction confirmed!`);
+                setAmount('');
+                refreshBalance();
+            } catch (txError: any) {
+                console.error("[DonaTrade] Transaction failed detailed:", txError);
+                if (txError.logs) {
+                    console.error("[DonaTrade] Transaction logs:", txError.logs);
+                }
+                throw txError; // Re-throw to be caught by outer handler
+            }
         } catch (error: any) {
             console.error("Transaction failed:", error);
             setTxStatus('error');
-            const msg = error.message || 'Check your balance.';
-            setTxMessage(`Transaction failed: ${msg}`);
-
-            if (msg.includes("Platform setup required")) {
-                setNeedsInit(true);
-            }
+            setTxMessage(`Transaction failed: ${error.message || 'Check your balance.'}`);
         } finally {
             setIsActionLoading(false);
         }
     };
 
-    const handleInitialize = async () => {
-        if (!publicKey) return;
-        setIsActionLoading(true);
-        try {
-            const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions }) as any;
-            if (!program) throw new Error("Program not initialized");
-
-            const [globalVaultConfig] = getGlobalVaultPDA();
-            const vaultTokenAccount = await getAssociatedTokenAddress(publicKey); // Use admin/user ATA as placeholder if needed, but really we need a PDA ATA. 
-            // Actually, the vault token account should be owned by the PDA.
-            // We can create it in the same tx or separate.
-            // Client side creation of PDA ATA is tricky without multiple signers if needed.
-            // But 'createAssociatedTokenAccountInstruction' works if we pay.
-
-            // 1. Derive ATA for the Global Vault PDA
-            // Associated Token Program ID
-            const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-
-            const [realVaultTokenAccount] = PublicKey.findProgramAddressSync(
-                [globalVaultConfig.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), USDC_MINT.toBuffer()],
-                ASSOCIATED_TOKEN_PROGRAM_ID
-            );
-
-            console.log("Initializing Global Vault with ATA:", realVaultTokenAccount.toBase58());
-
-            const tx = await program.methods
-                .initializeGlobalVault()
-                .accounts({
-                    admin: publicKey,
-                    globalVault: globalVaultConfig,
-                    usdcTokenAccount: realVaultTokenAccount,
-                    systemProgram: SystemProgram.programId,
-                })
-                .rpc();
-
-            setTxSignature(tx);
-            setTxStatus('success');
-            setTxMessage("Platform Initialized! You can now deposit.");
-            setNeedsInit(false);
-        } catch (e: any) {
-            console.error("Init failed:", e);
-            setTxMessage("Init failed: " + e.message);
-        } finally {
-            setIsActionLoading(false);
-        }
-    };
 
     if (!isOpen) return null;
 
@@ -321,30 +300,50 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                             )}
                         </div>
 
-                        {rawVault && (
-                            <button
-                                type="button"
-                                onClick={showBalance ? () => setShowBalance(false) : handleDecrypt}
-                                disabled={isLoading}
-                                className="px-4 py-2 border-3 border-foreground bg-background hover:bg-surface font-bold uppercase tracking-widest text-[11px] flex items-center gap-2 transition-all active:translate-y-[2px] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none whitespace-nowrap"
-                                style={{ fontFamily: "'Bangers', cursive" }}
-                            >
-                                {isLoading ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : showBalance ? (
-                                    <>
-                                        <EyeOff className="w-3 h-3" />
-                                        Hide
-                                    </>
-                                ) : (
-                                    <>
-                                        <Eye className="w-3 h-3" />
-                                        Reveal
-                                    </>
-                                )}
-                            </button>
-                        )}
+                        {/* Reveal/Hide Toggle - Show for everyone to support "Reveal" action */}
+                        <button
+                            type="button"
+                            onClick={showBalance ? () => setShowBalance(false) : (rawVault ? handleDecrypt : () => setShowBalance(true))}
+                            disabled={isLoading}
+                            className="px-4 py-2 border-3 border-foreground bg-background hover:bg-surface font-bold uppercase tracking-widest text-[11px] flex items-center gap-2 transition-all active:translate-y-[2px] shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none whitespace-nowrap"
+                            style={{ fontFamily: "'Bangers', cursive" }}
+                        >
+                            {isLoading ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : showBalance ? (
+                                <>
+                                    <EyeOff className="w-3 h-3" />
+                                    Hide Balance
+                                </>
+                            ) : (
+                                <>
+                                    <Eye className="w-3 h-3" />
+                                    Reveal Balance
+                                </>
+                            )}
+                        </button>
                     </div>
+
+                    {/* Verification Section */}
+                    {publicKey && (
+                        <div className="mt-4 pt-4 border-t-2 border-foreground/10 flex items-center justify-between">
+                            <div className="flex flex-col">
+                                <span className="text-[9px] font-bold uppercase text-secondary">Vault Address (PDA)</span>
+                                <span className="text-[10px] font-mono text-foreground/70">
+                                    {getInvestorVaultPDA(publicKey)[0].toBase58().slice(0, 12)}...
+                                </span>
+                            </div>
+                            <a
+                                href={`https://explorer.solana.com/address/${getInvestorVaultPDA(publicKey)[0].toBase58()}?cluster=devnet`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[9px] font-bold uppercase text-accent hover:underline flex items-center gap-1"
+                            >
+                                <Eye className="w-3 h-3" />
+                                Verify on Explorer
+                            </a>
+                        </div>
+                    )}
                 </div>
 
                 {/* Tabs */}
@@ -401,16 +400,6 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                         </div>
                     )}
 
-                    {needsInit && (
-                        <button
-                            type="button"
-                            onClick={handleInitialize}
-                            className="btn btn-secondary w-full mb-4"
-                            disabled={isActionLoading}
-                        >
-                            {isActionLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "⚠️ Initialize Platform (One-Time)"}
-                        </button>
-                    )}
 
                     <button
                         type="submit"

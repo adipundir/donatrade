@@ -21,7 +21,8 @@ export const SharesDisplay: FC<SharesDisplayProps> = ({
     compact = false,
 }) => {
     const { connection } = useConnection();
-    const { publicKey, signMessage, signTransaction, signAllTransactions } = useWallet();
+    const wallet = useWallet();
+    const { publicKey } = wallet;
     const [isRevealed, setIsRevealed] = useState(decryptedValue !== null && decryptedValue !== undefined);
     const [revealedValue, setRevealedValue] = useState<bigint | null>(
         decryptedValue !== null && decryptedValue !== undefined ? BigInt(decryptedValue) : null
@@ -41,7 +42,7 @@ export const SharesDisplay: FC<SharesDisplayProps> = ({
         }
 
         // Otherwise, perform real decryption reveal
-        if (!encryptedShares || !publicKey || !signMessage) {
+        if (!encryptedShares || !publicKey || !wallet.signMessage) {
             console.warn("[SharesDisplay] Cannot decrypt: Missing data or wallet connection.");
             return;
         }
@@ -55,18 +56,17 @@ export const SharesDisplay: FC<SharesDisplayProps> = ({
             const accountInfo = await connection.getAccountInfo(allowanceAccount);
 
             if (!accountInfo) {
-                const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions }) as any;
+                const program = getProgram(connection, wallet) as any;
                 if (program) {
-                    const authTx = await buildAuthorizeDecryptionTx(program, publicKey, handle);
-                    await authTx.rpc();
+                    const txBuilder = await buildAuthorizeDecryptionTx(program, publicKey, handle, publicKey);
+                    const transaction = await txBuilder.transaction();
+                    const signature = await wallet.sendTransaction(transaction, connection);
+                    await connection.confirmTransaction(signature, 'confirmed');
                 }
             }
 
             // Actual decryption
-            const value = await decryptHandle(handleStr, {
-                publicKey,
-                signMessage,
-            });
+            const value = await decryptHandle(handleStr, wallet);
 
             if (value !== null) {
                 setRevealedValue(value);
@@ -84,7 +84,7 @@ export const SharesDisplay: FC<SharesDisplayProps> = ({
     if (compact) {
         return (
             <div className="p-3 border-2 border-black bg-surface">
-                <p className="text-xs text-muted uppercase tracking-wide mb-1">{label}</p>
+                <p className="text-xs text-muted uppercase tracking-wider mb-1">{label}</p>
                 <div className="flex items-center justify-between">
                     <span className="text-xl font-bold">
                         {isLoading ? (
@@ -115,7 +115,7 @@ export const SharesDisplay: FC<SharesDisplayProps> = ({
     return (
         <div className="flex items-center justify-between p-4 border-3 border-foreground bg-background">
             <div>
-                <p className="text-xs text-muted uppercase tracking-wide mb-1" style={{ fontFamily: "'Bangers', cursive" }}>{label}</p>
+                <p className="text-xs text-muted uppercase tracking-wider mb-1" style={{ fontFamily: "'Bangers', cursive" }}>{label}</p>
                 <div className="flex items-center gap-2">
                     {isLoading ? (
                         <Loader2 className="w-6 h-6 animate-spin text-accent" />

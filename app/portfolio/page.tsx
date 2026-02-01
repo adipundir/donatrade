@@ -12,7 +12,7 @@ import {
     buildAuthorizeDecryptionTx,
     getAllowancePDA,
 } from '@/lib/solana';
-import { getCompanyById, formatPricePerShare } from '@/lib/mockData';
+import { formatPricePerShare } from '@/lib/mockData';
 import { formatUSDC } from '@/lib/inco';
 import { useVaultModal } from '@/components/VaultProvider';
 import { useConnection } from '@solana/wallet-adapter-react';
@@ -24,7 +24,8 @@ import { bytesToHandle, decryptHandle } from '@/lib/encryption';
  */
 export default function PortfolioPage() {
     const { connection } = useConnection();
-    const { connected, publicKey, signTransaction, signAllTransactions, signMessage } = useWallet();
+    const wallet = useWallet();
+    const { connected, publicKey } = wallet;
     const { openVault } = useVaultModal();
     const router = useRouter();
 
@@ -45,7 +46,7 @@ export default function PortfolioPage() {
         if (!publicKey) return;
         setIsLoading(true);
         try {
-            const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions });
+            const program = getProgram(connection, wallet);
             if (program) {
                 const [v, p] = await Promise.all([
                     fetchInvestorVault(program, publicKey),
@@ -54,11 +55,15 @@ export default function PortfolioPage() {
                 setRawVault(v);
 
                 // Map positions to include company details from mock data (names, sectors)
+                // Map positions
                 const enrichedPositions = p.map(pos => {
-                    const companyDetails = getCompanyById(pos.companyId);
                     return {
                         ...pos,
-                        company: companyDetails || { name: `Company #${pos.companyId}`, sector: 'Unknown' }
+                        company: {
+                            name: `Private Company #${pos.companyId}`,
+                            sector: 'Private Sector',
+                            description: 'Confidential'
+                        }
                     };
                 });
                 setPositions(enrichedPositions);
@@ -71,7 +76,7 @@ export default function PortfolioPage() {
     };
 
     const handleRevealVault = async () => {
-        if (!rawVault || !publicKey || !signMessage) return;
+        if (!rawVault || !publicKey || !wallet.signMessage) return;
         setIsRevealingVault(true);
         try {
             const handleStr = bytesToHandle(rawVault.cusd);
@@ -81,14 +86,16 @@ export default function PortfolioPage() {
             const accountInfo = await connection.getAccountInfo(allowanceAccount);
 
             if (!accountInfo) {
-                const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions }) as any;
+                const program = getProgram(connection, wallet) as any;
                 if (program) {
-                    const authTx = await buildAuthorizeDecryptionTx(program, publicKey, handle);
-                    await authTx.rpc();
+                    const txBuilder = await buildAuthorizeDecryptionTx(program, publicKey, handle, publicKey);
+                    const transaction = await txBuilder.transaction();
+                    const signature = await wallet.sendTransaction(transaction, connection);
+                    await connection.confirmTransaction(signature, 'confirmed');
                 }
             }
 
-            const value = await decryptHandle(handleStr, { publicKey, signMessage });
+            const value = await decryptHandle(handleStr, wallet);
 
             if (value !== null) {
                 setVaultBalance(value);

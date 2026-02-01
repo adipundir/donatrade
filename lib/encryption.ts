@@ -1,7 +1,7 @@
 import { decrypt } from '@inco/solana-sdk/attested-decrypt';
 
 /**
- * Client-side encryption utilities for Donatrade using Inco Lightning FHE.
+ * Client-side encryption utilities for Donatrade using Inco Lightning TEE / Confidential Computing.
  */
 
 /**
@@ -9,39 +9,38 @@ import { decrypt } from '@inco/solana-sdk/attested-decrypt';
  * The Inco SDK requires handles as decimal strings for decryption requests.
  */
 export function bytesToHandle(input: any): string {
-    if (!input) return "0";
-
-    // Handle new Anchor 0.31 IDL format (BN or object with numeric key)
-    if (typeof input === 'string') return input;
+    if (input === undefined || input === null) return "0";
+    if (typeof input === 'string') return input.trim() || "0";
     if (typeof input === 'bigint') return input.toString();
+
+    // Handle Anchor BN or other numeric objects
+    if (typeof input.toString === 'function' && !Array.isArray(input)) {
+        const str = input.toString();
+        if (/^\d+$/.test(str)) return str;
+    }
+
+    // Handle Tuple Structs or Object Wrappers { 0: ..., ... } or { inner: ... } or { handle: ... }
     if (typeof input === 'object') {
-        // Handle BN or tuple struct
-        if (input.toString && typeof input.toString === 'function' && !Array.isArray(input)) {
-            const str = input.toString();
-            // If it's a numeric string, it's a handle
-            if (!isNaN(Number(str)) || /^\d+$/.test(str)) return str;
-        }
-        // Handle the case where it's { 0: BN }
-        if (input[0]) return input[0].toString();
-        // Handle the case where it's { inner: number[] }
-        if (input.inner) return bytesToHandle(input.inner);
+        if (input[0] !== undefined) return bytesToHandle(input[0]);
+        if (input.inner !== undefined) return bytesToHandle(input.inner);
+        if (input.handle !== undefined) return bytesToHandle(input.handle);
     }
 
-    if (Array.isArray(input) && input.length === 16) {
-        // handles are u128 little-endian
-        let handle = BigInt(0);
+    // Handle raw byte arrays (u128 is Little Endian on-chain)
+    if ((Array.isArray(input) || input instanceof Uint8Array) && input.length === 16) {
+        let result = BigInt(0);
         for (let i = 15; i >= 0; i--) {
-            handle = handle * BigInt(256) + BigInt(input[i]);
+            result = (result << BigInt(8)) | BigInt(input[i]);
         }
-        return handle.toString();
+        return result.toString();
     }
 
-    console.warn("[Encryption] Unexpected handle input format:", typeof input);
+    console.warn("[Encryption] Unexpected handle input format:", typeof input, input);
     return "0";
 }
 
 /**
- * Decrypts an FHE handle via Inco's Attested Reveal.
+ * Decrypts a confidential handle via Inco's Attested Reveal.
  * Requires the user to sign a message via their wallet.
  */
 export async function decryptHandle(handleStr: string, wallet: any): Promise<bigint | null> {
@@ -69,6 +68,38 @@ export async function decryptHandle(handleStr: string, wallet: any): Promise<big
 
         console.error("[Encryption] Decryption failed:", error);
         throw error;
+    }
+}
+
+/**
+ * Simple symmetric encryption for metadata strings.
+ * The 'key' used here should be derived from the TEE handle on-chain.
+ */
+export function encryptMetadata(text: string, keySeed: string): string {
+    if (!text) return "";
+    // Basic XOR encryption for the demo to ensure privacy without complex dependencies
+    // In a real app, this would be AES-GCM
+    const key = keySeed.repeat(Math.ceil(text.length / keySeed.length));
+    let result = "";
+    for (let i = 0; i < text.length; i++) {
+        result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i));
+    }
+    return Buffer.from(result).toString('base64');
+}
+
+export function decryptMetadata(ciphertext: string, keySeed: string): string {
+    if (!ciphertext) return "";
+    try {
+        const text = Buffer.from(ciphertext, 'base64').toString();
+        const key = keySeed.repeat(Math.ceil(text.length / keySeed.length));
+        let result = "";
+        for (let i = 0; i < text.length; i++) {
+            result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i));
+        }
+        return result;
+    } catch (e) {
+        console.error("[Encryption] Decryption failed:", e);
+        return "Decryption error";
     }
 }
 

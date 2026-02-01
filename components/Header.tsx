@@ -15,8 +15,9 @@ import { useVaultModal } from './VaultProvider';
  * Comic-style header with Donatrade branding and theme switching.
  */
 export const Header = () => {
-    const { connected } = useWallet();
+    const { connected, publicKey } = useWallet();
     const { isVaultOpen, openVault, closeVault } = useVaultModal();
+    const ADMIN_ADDRESS = "3va6LFUv6M21AnFwVETmKbEpJfNHD48D2Aegpwm1PGDh";
 
     return (
         <>
@@ -51,6 +52,24 @@ export const Header = () => {
                                     >
                                         Portfolio
                                     </Link>
+                                    {publicKey?.toBase58() === ADMIN_ADDRESS && (
+                                        <Link
+                                            href="/companies/manage"
+                                            className="text-sm font-bold uppercase tracking-wide text-secondary hover:text-foreground transition-colors"
+                                            style={{ fontFamily: "'Bangers', cursive" }}
+                                        >
+                                            Manage
+                                        </Link>
+                                    )}
+                                    {publicKey?.toBase58() === ADMIN_ADDRESS && (
+                                        <Link
+                                            href="/admin"
+                                            className="text-sm font-bold uppercase tracking-wide text-accent hover:text-foreground transition-colors"
+                                            style={{ fontFamily: "'Bangers', cursive" }}
+                                        >
+                                            Admin
+                                        </Link>
+                                    )}
                                 </div>
                             )}
                         </div>
