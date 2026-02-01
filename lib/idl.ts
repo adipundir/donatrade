@@ -1,5 +1,5 @@
 export const IDL = {
-  "address": "2CuAjUWhAPfFuY6tCxxpqjnb43yZyRXnBM6fF7M6Y8ho",
+  "address": "8abuyq3xmQkNkGh7JGztMT1bvKr3CWpAw49bsyeMTWAT",
   "metadata": {
     "name": "donatrade_program",
     "version": "0.1.0",

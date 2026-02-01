@@ -1,3 +1,5 @@
+#![allow(unexpected_cfgs)]
+#![allow(deprecated)]
 //! # Donatrade Program - Simplified Internal Ledger
 //!
 //! A privacy-first private investment platform on Solana that records share ownership
@@ -10,7 +12,7 @@ use inco_lightning::cpi::{allow, as_euint128, e_add, e_mul, e_sub};
 use inco_lightning::types::Euint128;
 use inco_lightning::ID as INCO_LIGHTNING_ID;
 
-declare_id!("2CuAjUWhAPfFuY6tCxxpqjnb43yZyRXnBM6fF7M6Y8ho");
+declare_id!("8abuyq3xmQkNkGh7JGztMT1bvKr3CWpAw49bsyeMTWAT");
 
 #[account]
 #[derive(Default)]
@@ -180,10 +182,10 @@ pub mod donatrade_program {
     ) -> Result<()> {
         let company = &mut ctx.accounts.company_account;
         require!(company.active, DonatradeError::Inactive);
-        // require!(
-        //     company.shares_available >= share_amount,
-        //     DonatradeError::InsufficientShares
-        // ); // Implicitly checked by e_sub failure
+        require!(
+            company.shares_available >= share_amount,
+            DonatradeError::InsufficientShares
+        );
 
         let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
         let investor = ctx.accounts.investor.to_account_info();
@@ -200,27 +202,20 @@ pub mod donatrade_program {
         )?;
 
         // 2. Convert Price to Encrypted for calculation
-        let e_price = as_euint128(
-            CpiContext::new(
-                inco_program.clone(),
-                Operation {
-                    signer: investor.clone(),
-                },
-            ),
-            company.price_per_share as u128,
-        )?;
+        // Plaintext check for overflow on cost before encrypting
+        let cost = share_amount
+            .checked_mul(company.price_per_share)
+            .ok_or(DonatradeError::Overflow)?;
 
-        // 3. Calculate Cost = e_shares * e_price
-        let e_cost = e_mul(
+        // 2. Convert Cost to Encrypted directly (more efficient than e_mul)
+        let e_cost = as_euint128(
             CpiContext::new(
                 inco_program.clone(),
                 Operation {
                     signer: investor.clone(),
                 },
             ),
-            e_shares,
-            e_price,
-            0, // scalar_byte
+            cost as u128,
         )?;
 
         // 4. Subtract Cost from Investor Vault
@@ -700,7 +695,7 @@ pub struct ActivateCompany<'info> {
     #[account(
         init,
         payer = platform_admin,
-        space = 8 + 8 + 32 + 16 + 16 + 16 + 8 + 8 + 1 + 1 + 1, // ~117 bytes
+        space = 8 + 8 + 32 + 16 + 8 + 8 + 1 + 1, // 82 bytes (discriminator + u64 + pubkey + euint128 + u64 + u64 + bool + u8)
         seeds = [b"company", company_id.to_le_bytes().as_ref()],
         bump
     )]

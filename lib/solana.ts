@@ -14,7 +14,7 @@ export { BN, Program };
 
 // --- Constants ---
 // Program ID
-export const PROGRAM_ID = new PublicKey("2CuAjUWhAPfFuY6tCxxpqjnb43yZyRXnBM6fF7M6Y8ho");
+export const PROGRAM_ID = new PublicKey("8abuyq3xmQkNkGh7JGztMT1bvKr3CWpAw49bsyeMTWAT");
 
 // Inco Devnet Network settings - aligns with standard Solana Devnet
 export const INCO_NETWORK = "https://api.devnet.solana.com";
@@ -491,6 +491,23 @@ export async function fetchAllCompanies(connection: Connection): Promise<any[]> 
         return accounts as any[];
     } catch (e) {
         console.error("Error fetching all companies:", e);
+        return [];
+    }
+}
+
+/**
+ * Fetches all active trading offers from the program.
+ */
+export async function fetchAllOffers(program: Program<any>) {
+    try {
+        const offers = await (program.account as any).offerAccount.all();
+        console.log(`[DonaTrade] Fetched ${offers.length} offers`);
+        return offers.map((o: any) => ({
+            ...o.account,
+            pda: o.publicKey
+        }));
+    } catch (e) {
+        console.error("Error fetching all offers:", e);
         return [];
     }
 }

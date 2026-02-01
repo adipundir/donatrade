@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletButton } from './WalletButton';
-import { ThemeToggle } from './ThemeToggle';
+
 
 import { VaultModal } from './VaultModal';
 import { LayoutGrid, Wallet as VaultIcon } from 'lucide-react';
@@ -44,6 +44,13 @@ export const Header = () => {
                                         style={{ fontFamily: "'Bangers', cursive" }}
                                     >
                                         Companies
+                                    </Link>
+                                    <Link
+                                        href="/trade"
+                                        className="text-sm font-bold uppercase tracking-wide text-secondary hover:text-foreground transition-colors"
+                                        style={{ fontFamily: "'Bangers', cursive" }}
+                                    >
+                                        Market
                                     </Link>
                                     <Link
                                         href="/portfolio"
@@ -86,7 +93,6 @@ export const Header = () => {
                                     <span className="hidden sm:inline">My Vault</span>
                                 </button>
                             )}
-                            <ThemeToggle />
                             <WalletButton />
                         </div>
                     </nav>

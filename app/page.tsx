@@ -67,7 +67,7 @@ export default function LandingPage() {
             </h1>
 
             <p className="text-lg md:text-xl text-secondary mb-10 animate-pop stagger-2 max-w-2xl mx-auto" style={{ fontFamily: "'Comic Neue', cursive" }}>
-              Long or short <strong>SpaceX, Stripe, OpenAI</strong>, and 40+ private markets with
+              Invest in <strong>SpaceX, Stripe, OpenAI</strong>, and 40+ private markets with
               real-time settlement and transparent pricing.
             </p>
 
@@ -138,7 +138,7 @@ export default function LandingPage() {
                 Why Privacy Matters
               </h2>
               <p className="text-lg md:text-xl text-foreground max-w-2xl mx-auto opacity-90" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                In traditional private equity, your holdings are visible to everyone: competitors, regulators, 
+                In traditional private equity, your holdings are visible to everyone: competitors, regulators,
                 and even malicious actors. Donatrade changes that.
               </p>
             </div>
@@ -180,15 +180,15 @@ export default function LandingPage() {
                 </div>
                 <div className="space-y-3" style={{ fontFamily: "'Comic Neue', cursive" }}>
                   <p className="text-foreground opacity-90">
-                    <strong>Protect your strategy:</strong> Keep your investment positions private from competitors 
+                    <strong>Protect your strategy:</strong> Keep your investment positions private from competitors
                     who might front-run your trades or copy your moves.
                   </p>
                   <p className="text-foreground opacity-90">
-                    <strong>Avoid targeted attacks:</strong> Large holdings visible on-chain make you a target 
+                    <strong>Avoid targeted attacks:</strong> Large holdings visible on-chain make you a target
                     for phishing, social engineering, and physical threats.
                   </p>
                   <p className="text-foreground opacity-90">
-                    <strong>Maintain competitive edge:</strong> Your trading patterns and portfolio composition 
+                    <strong>Maintain competitive edge:</strong> Your trading patterns and portfolio composition
                     remain confidential, giving you an advantage in the market.
                   </p>
                 </div>
@@ -201,9 +201,9 @@ export default function LandingPage() {
                 <h3 className="text-2xl text-foreground">Powered by INCO Lightning</h3>
               </div>
               <p className="text-foreground max-w-2xl mx-auto opacity-90" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                INCO Lightning enables true confidential computing on-chain. Your share amounts are processed 
-                in an encrypted environment that&apos;s verifiable but private, enabling verifiable privacy 
-                without trusting any single party. This isn&apos;t just encryption, it&apos;s confidential computing 
+                INCO Lightning enables true confidential computing on-chain. Your share amounts are processed
+                in an encrypted environment that&apos;s verifiable but private, enabling verifiable privacy
+                without trusting any single party. This isn&apos;t just encryption, it&apos;s confidential computing
                 you can actually trust!
               </p>
             </div>
@@ -276,15 +276,15 @@ export default function LandingPage() {
             <div>
               <h4 className="text-lg mb-4 font-bold uppercase tracking-wide">Connect</h4>
               <div className="flex gap-3 mb-4">
-                <a 
-                  href="#" 
+                <a
+                  href="#"
                   className="w-10 h-10 border-3 border-foreground flex items-center justify-center bg-background hover:bg-accent hover:text-white transition-colors"
                   aria-label="Twitter"
                 >
                   <Twitter className="w-5 h-5" />
                 </a>
-                <a 
-                  href="#" 
+                <a
+                  href="#"
                   className="w-10 h-10 border-3 border-foreground flex items-center justify-center bg-background hover:bg-accent hover:text-white transition-colors"
                   aria-label="GitHub"
                 >

@@ -34,6 +34,8 @@ import { PublicKey } from "@solana/web3.js";
 import { useConnection } from '@solana/wallet-adapter-react';
 import { formatPricePerShare } from '@/lib/mockData';
 import { getCompanyById } from '@/lib/actions/companies';
+import { bytesToHandle, decryptHandle } from '@/lib/encryption';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 
 /**
  * Company Detail Page - Comic-style view and manage position.
@@ -59,6 +61,8 @@ export default function CompanyDetailPage() {
     const [dbCompany, setDbCompany] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(false); // for actions like buying
     const [isInitialLoading, setIsInitialLoading] = useState(true); // for first load
+    const [decryptedBalance, setDecryptedBalance] = useState<bigint | null>(null);
+    const [isRevealingBalance, setIsRevealingBalance] = useState(false);
 
     const companyId = Number(params.id);
 
@@ -141,14 +145,19 @@ export default function CompanyDetailPage() {
                 // Force re-instantiate public key from string to ensure standard Buffer format
                 const investorPubkey = new PublicKey(publicKey.toString());
 
-                console.log("[DonaTrade] Loading user state for:", investorPubkey.toBase58());
-                const [vaultData, posData] = await Promise.all([
+                console.log("[DonaTrade] Refreshing data for:", investorPubkey.toBase58());
+
+                // Parallelize user data and on-chain company data refreshes
+                const [vaultData, posData, _] = await Promise.all([
                     fetchInvestorVault(program, investorPubkey),
-                    fetchInvestorPositions(program, investorPubkey)
+                    fetchInvestorPositions(program, investorPubkey),
+                    loadOnChainData() // Refresh company share availability
                 ]);
 
-                console.log("[DonaTrade] User data loaded:", { vault: !!vaultData, positions: posData?.length || 0 });
                 setRawVault(vaultData);
+
+                // If vault changed or disappeared, reset decrypted balance
+                if (!vaultData) setDecryptedBalance(null);
 
                 // Find current company position if it exists
                 const currentPos = posData?.find((p: any) => Number(p.companyId) === companyId);
@@ -158,6 +167,29 @@ export default function CompanyDetailPage() {
             console.error("[DonaTrade] Error loading user data:", error);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleRevealBalance = async () => {
+        if (!rawVault || !publicKey || !wallet.signMessage) return;
+        setIsRevealingBalance(true);
+        try {
+            const program = getProgram(connection, wallet) as any;
+            if (!program) throw new Error("Program not initialized");
+
+            const handle = bytesToHandle(rawVault.cusd[0]);
+            const signature = await decryptHandle(
+                handle,
+                wallet
+            );
+
+            if (signature) {
+                setDecryptedBalance(BigInt(signature));
+            }
+        } catch (error) {
+            console.error("[DonaTrade] Failed to reveal balance:", error);
+        } finally {
+            setIsRevealingBalance(false);
         }
     };
 
@@ -188,6 +220,16 @@ export default function CompanyDetailPage() {
             setTxSuccess(`ERROR: Not enough shares available! Only ${company.sharesAvailable.toLocaleString()} left.`);
             setTimeout(() => setTxSuccess(''), 5000);
             return;
+        }
+
+        // Check against decrypted balance if available
+        if (decryptedBalance !== null) {
+            const cost = BigInt(buyAmount) * BigInt(company.pricePerShare);
+            if (cost > decryptedBalance) {
+                setTxSuccess(`ERROR: Insufficient funds! Needed: ${(Number(cost) / 1_000_000).toFixed(2)} USDC. Your Vault: ${(Number(decryptedBalance) / 1_000_000).toFixed(2)} USDC.`);
+                setTimeout(() => setTxSuccess(''), 5000);
+                return;
+            }
         }
 
         setTxPending(true);
@@ -230,7 +272,15 @@ export default function CompanyDetailPage() {
 
             setTxSuccess(`BOOM! Your Confidential Share Allocation (CSA) of ${buyAmount} shares is confirmed! Sig: ${signature.slice(0, 8)}...`);
             setBuyAmount('');
-            loadPosition();
+
+            // Full refresh
+            await Promise.all([
+                loadPosition(),
+                loadDbCompany(),
+                // If they bought, their balance definitely changed, hide it or try to re-decrypt? 
+                // Better to just null it and let them reveal again to be safe.
+                setDecryptedBalance(null)
+            ]);
         } catch (error: any) {
             console.error("[DonaTrade] Buy shares failed:", error);
             let msg = error.message || 'Transaction failed.';
@@ -570,10 +620,40 @@ export default function CompanyDetailPage() {
                                         />
                                     </div>
                                     <div className="p-3 border-2 border-accent bg-accent-light">
-                                        <p className="text-sm text-accent" style={{ fontFamily: "'Comic Neue', cursive" }}>
+                                        <p className="text-sm text-foreground font-bold" style={{ fontFamily: "'Comic Neue', cursive" }}>
                                             <Lock className="w-4 h-4 inline mr-1" />
                                             Your Confidential Share Allocation (CSA) will be encrypted before storing on-chain!
                                         </p>
+                                    </div>
+
+                                    {/* Vault Balance Reveal for safety */}
+                                    <div className="flex items-center justify-between mt-4 mb-2">
+                                        <p className="text-xs uppercase font-bold tracking-wider opacity-60">Your Vault Balance</p>
+                                        <button
+                                            onClick={handleRevealBalance}
+                                            disabled={isRevealingBalance}
+                                            className="text-[10px] uppercase font-bold text-accent hover:underline flex items-center gap-1"
+                                        >
+                                            {isRevealingBalance ? (
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                            ) : decryptedBalance !== null ? (
+                                                <>
+                                                    <EyeOff className="w-3 h-3" />
+                                                    Hide
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Eye className="w-3 h-3" />
+                                                    Reveal for safety
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                    <div className="p-3 border-2 border-black bg-surface mb-6 flex items-center justify-between">
+                                        <span className="font-mono text-xl font-bold">
+                                            {decryptedBalance !== null ? (Number(decryptedBalance) / 1_000_000).toLocaleString() : '🔒 ••••••'}
+                                        </span>
+                                        <span className="text-xs font-bold opacity-70">cUSD</span>
                                     </div>
                                     <button
                                         onClick={handleBuyShares}

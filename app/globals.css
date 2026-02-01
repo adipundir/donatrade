@@ -85,7 +85,7 @@ h2,
 h3,
 .comic-title {
     font-family: 'Bangers', cursive;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
 }
 
 /* Comic-style card with bold borders */
@@ -120,7 +120,7 @@ h3,
     border-radius: 0;
     font-family: 'Bangers', cursive;
     font-weight: 400;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
     font-size: 1rem;
     transition: all 0.15s ease;
     cursor: pointer;
@@ -192,6 +192,18 @@ h3,
     color: var(--text-muted);
 }
 
+/* Remove arrows from number inputs */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
 /* Comic-style badges */
 .badge {
     display: inline-flex;
@@ -202,7 +214,7 @@ h3,
     border-radius: 0;
     font-size: 0.75rem;
     font-family: 'Bangers', cursive;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
 }
 
@@ -266,7 +278,7 @@ h3,
     border: 3px solid var(--surface-border) !important;
     border-radius: 0 !important;
     font-family: 'Bangers', cursive !important;
-    letter-spacing: 0.05em !important;
+    letter-spacing: 0.1em !important;
     text-transform: uppercase !important;
     box-shadow: 3px 3px 0 var(--surface-border) !important;
 }
@@ -413,4 +425,16 @@ h3,
     border: 2px solid var(--surface-border);
     transform: rotate(-2deg);
     font-family: 'Bangers', cursive;
+    letter-spacing: 0.1em;
+}
+
+/* Global override for inline styles using Bangers */
+[style*="Bangers"] {
+    letter-spacing: 0.1em !important;
+}
+
+/* Utility class for Bangers font */
+.font-bangers {
+    font-family: 'Bangers', cursive;
+    letter-spacing: 0.1em;
 }
