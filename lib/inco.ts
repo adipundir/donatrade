@@ -61,3 +61,16 @@ export function parseUSDC(usdcString: string): bigint {
 
     return whole * BigInt(1_000_000) + BigInt(fraction);
 }
+/**
+ * Formats price per share for display (e.g. $10.00/share)
+ */
+export function formatPricePerShare(pricePerShare: number | bigint): string {
+    const value = typeof pricePerShare === 'number' ? pricePerShare : Number(pricePerShare);
+    const dollars = value / 1_000_000;
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(dollars);
+}

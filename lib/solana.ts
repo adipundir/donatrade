@@ -98,7 +98,7 @@ export function getAllowancePDA(handle: bigint, allowedAddress: PublicKey): [Pub
 }
 
 
-import { IDL } from "./idl";
+import IDL from "./idl.json";
 
 /**
  * Returns an Anchor Program instance for the DonaTrade program.

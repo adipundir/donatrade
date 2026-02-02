@@ -2,7 +2,7 @@
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { Program, AnchorProvider, Wallet, BN } from "@coral-xyz/anchor";
 import { getOrCreateAssociatedTokenAccount, createAssociatedTokenAccountInstruction, getAssociatedTokenAddress } from "@solana/spl-token";
-import { IDL } from "../lib/idl";
+import IDL from "../lib/idl.json";
 import {
     PROGRAM_ID,
     USDC_MINT,

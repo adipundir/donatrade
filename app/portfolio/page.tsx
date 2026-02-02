@@ -12,8 +12,7 @@ import {
     buildAuthorizeDecryptionTx,
     getAllowancePDA,
 } from '@/lib/solana';
-import { formatPricePerShare } from '@/lib/mockData';
-import { formatUSDC } from '@/lib/inco';
+import { formatUSDC, formatPricePerShare } from '@/lib/inco';
 import { getCompanies } from '@/lib/actions/companies';
 import { useVaultModal } from '@/components/VaultProvider';
 import { useConnection } from '@solana/wallet-adapter-react';

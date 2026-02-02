@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Shield, Building2, ArrowRight, Lock, Calendar, TrendingUp, DollarSign } from 'lucide-react';
 import { PrivacyBadge } from '@/components/PrivacyBadge';
-import { formatPricePerShare } from '@/lib/mockData';
+import { encryptValue, formatPricePerShare } from '@/lib/inco';
 import { ApplicationReviewModal } from '@/components/ApplicationReviewModal';
 import { RegisterCompanyModal } from '@/components/RegisterCompanyModal';
 import { getCompanies, getCompanyByWallet } from '@/lib/actions/companies';

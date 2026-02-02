@@ -1,6 +1,6 @@
 
 import { Connection, PublicKey } from '@solana/web3.js';
-import { IDL } from '../lib/idl';
+import IDL from '../lib/idl.json';
 
 const RPC_URL = "https://validator.testnet.inco.org";
 const PROGRAM_ID = new PublicKey(IDL.address);

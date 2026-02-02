@@ -31,10 +31,9 @@ import {
     BN,
     USDC_MINT
 } from '@/lib/solana';
-import { encryptValue } from '@/lib/inco';
+import { encryptValue, formatPricePerShare } from '@/lib/inco';
 import { PublicKey } from "@solana/web3.js";
 import { useConnection } from '@solana/wallet-adapter-react';
-import { formatPricePerShare } from '@/lib/mockData';
 import { getCompanyById } from '@/lib/actions/companies';
 import { bytesToHandle, decryptHandle } from '@/lib/encryption';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
