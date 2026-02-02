@@ -240,33 +240,20 @@ export default function LandingPage() {
                   </a>
                 </li>
                 <li>
-                  <a href="#features" className="text-sm text-secondary hover:text-foreground transition-colors">
-                    Features
+                  <a href="/trade" className="text-sm text-secondary hover:text-foreground transition-colors">
+                    P2P Market
                   </a>
                 </li>
               </ul>
             </div>
 
-            {/* Resources */}
+            {/* Support */}
             <div>
-              <h4 className="text-lg mb-4 font-bold uppercase tracking-wide">Resources</h4>
+              <h4 className="text-lg mb-4 font-bold uppercase tracking-wide">Support</h4>
               <ul className="space-y-2" style={{ fontFamily: "'Comic Neue', cursive" }}>
                 <li>
-                  <a href="#" className="text-sm text-secondary hover:text-foreground transition-colors flex items-center gap-1">
-                    Documentation
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="text-sm text-secondary hover:text-foreground transition-colors flex items-center gap-1">
-                    Privacy Policy
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="text-sm text-secondary hover:text-foreground transition-colors flex items-center gap-1">
-                    Terms of Service
-                    <ExternalLink className="w-3 h-3" />
+                  <a href="mailto:support@donatrade.com" className="text-sm text-secondary hover:text-foreground transition-colors">
+                    Get Help
                   </a>
                 </li>
               </ul>
@@ -277,14 +264,18 @@ export default function LandingPage() {
               <h4 className="text-lg mb-4 font-bold uppercase tracking-wide">Connect</h4>
               <div className="flex gap-3 mb-4">
                 <a
-                  href="#"
+                  href="https://twitter.com/donatrade"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="w-10 h-10 border-3 border-foreground flex items-center justify-center bg-background hover:bg-accent hover:text-white transition-colors"
                   aria-label="Twitter"
                 >
                   <Twitter className="w-5 h-5" />
                 </a>
                 <a
-                  href="#"
+                  href="https://github.com/adipundir/donatrade"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="w-10 h-10 border-3 border-foreground flex items-center justify-center bg-background hover:bg-accent hover:text-white transition-colors"
                   aria-label="GitHub"
                 >
@@ -292,10 +283,7 @@ export default function LandingPage() {
                 </a>
               </div>
               <p className="text-xs text-muted" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                Built for Privacy Hackathon
-              </p>
-              <p className="text-xs text-muted" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                Solana Devnet
+                Built for Solana Devnet
               </p>
             </div>
           </div>
