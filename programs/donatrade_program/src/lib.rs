@@ -12,7 +12,7 @@ use inco_lightning::cpi::{allow, as_euint128, e_add, e_mul, e_sub};
 use inco_lightning::types::Euint128;
 use inco_lightning::ID as INCO_LIGHTNING_ID;
 
-declare_id!("8abuyq3xmQkNkGh7JGztMT1bvKr3CWpAw49bsyeMTWAT");
+declare_id!("8Tn6H8J7VwE6G3asXS2L6AZcA4y6TMHTRjFZBMjMLvbX");
 
 #[account]
 #[derive(Default)]
@@ -29,8 +29,8 @@ pub struct CompanyAccount {
     pub company_admin: Pubkey,
     pub cusd: Euint128,
 
-    // Public Shares Available (visible to all)
-    pub shares_available: u64,
+    // Private Shares Available (Encrypted)
+    pub shares_available: Euint128,
 
     // Plaintext Price
     pub price_per_share: u64,
@@ -91,7 +91,16 @@ pub mod donatrade_program {
         let company = &mut ctx.accounts.company_account;
         company.company_id = company_id;
         company.company_admin = company_admin;
-        company.shares_available = initial_shares;
+
+        let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
+        let admin = ctx.accounts.platform_admin.to_account_info();
+
+        // Initialize shares available as encrypted
+        company.shares_available = as_euint128(
+            CpiContext::new(inco_program, Operation { signer: admin }),
+            initial_shares as u128,
+        )?;
+
         company.price_per_share = price_per_share;
         company.active = true;
         company.bump = ctx.bumps.company_account;
@@ -178,44 +187,49 @@ pub mod donatrade_program {
 
     pub fn buy_shares<'info>(
         ctx: Context<'_, '_, '_, 'info, BuyShares<'info>>,
-        share_amount: u64,
+        e_shares: Euint128,
     ) -> Result<()> {
         let company = &mut ctx.accounts.company_account;
         require!(company.active, DonatradeError::Inactive);
-        require!(
-            company.shares_available >= share_amount,
-            DonatradeError::InsufficientShares
-        );
 
         let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
         let investor = ctx.accounts.investor.to_account_info();
 
-        // 1. Convert share amount to encrypted
-        let e_shares = as_euint128(
+        // 1. Subtract shares from available pool (Encrypted check happens in e_sub)
+        company.shares_available = e_sub(
             CpiContext::new(
                 inco_program.clone(),
                 Operation {
                     signer: investor.clone(),
                 },
             ),
-            share_amount as u128,
+            company.shares_available,
+            e_shares,
+            0,
         )?;
 
         // 2. Convert Price to Encrypted for calculation
-        // Plaintext check for overflow on cost before encrypting
-        let cost = share_amount
-            .checked_mul(company.price_per_share)
-            .ok_or(DonatradeError::Overflow)?;
-
-        // 2. Convert Cost to Encrypted directly (more efficient than e_mul)
-        let e_cost = as_euint128(
+        let e_price = as_euint128(
             CpiContext::new(
                 inco_program.clone(),
                 Operation {
                     signer: investor.clone(),
                 },
             ),
-            cost as u128,
+            company.price_per_share as u128,
+        )?;
+
+        // 3. Calculate Cost (Price * Amount) via e_mul
+        let e_cost = e_mul(
+            CpiContext::new(
+                inco_program.clone(),
+                Operation {
+                    signer: investor.clone(),
+                },
+            ),
+            e_price,
+            e_shares,
+            0,
         )?;
 
         // 4. Subtract Cost from Investor Vault
@@ -259,12 +273,6 @@ pub mod donatrade_program {
             e_shares,
             0,
         )?;
-
-        // 7. Subtract Shares from Company (plaintext now)
-        company.shares_available = company
-            .shares_available
-            .checked_sub(share_amount)
-            .ok_or(DonatradeError::InsufficientShares)?;
 
         Ok(())
     }
@@ -342,24 +350,13 @@ pub mod donatrade_program {
 
     pub fn sell_shares<'info>(
         ctx: Context<'_, '_, '_, 'info, SellShares<'info>>,
-        share_amount: u64,
+        e_shares: Euint128,
     ) -> Result<()> {
         let company = &mut ctx.accounts.company_account;
         // Don't check plaintext overflow on price.
 
         let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
         let investor = ctx.accounts.investor.to_account_info();
-
-        // 1. Convert shares to encrypted
-        let e_shares = as_euint128(
-            CpiContext::new(
-                inco_program.clone(),
-                Operation {
-                    signer: investor.clone(),
-                },
-            ),
-            share_amount as u128,
-        )?;
 
         // 2. Value = shares * price (lift price to encrypted)
         let e_price = as_euint128(
@@ -409,23 +406,18 @@ pub mod donatrade_program {
             0,
         )?;
 
-        ctx.accounts.investor_vault.cusd = e_add(
+        // Add shares back to company (Private pool)
+        company.shares_available = e_add(
             CpiContext::new(
                 inco_program.clone(),
                 Operation {
                     signer: investor.clone(),
                 },
             ),
-            ctx.accounts.investor_vault.cusd,
-            e_val,
+            company.shares_available,
+            e_shares,
             0,
         )?;
-
-        // Add shares back to company (plaintext now)
-        company.shares_available = company
-            .shares_available
-            .checked_add(share_amount)
-            .ok_or(DonatradeError::Overflow)?;
         Ok(())
     }
 
@@ -436,37 +428,46 @@ pub mod donatrade_program {
         active: bool,
     ) -> Result<()> {
         let company = &mut ctx.accounts.company_account;
+        let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
+        let admin = ctx.accounts.company_admin.to_account_info();
 
-        // Update price
+        // Update price (plaintext)
         company.price_per_share = new_price;
 
-        // Add shares (plaintext now)
-        company.shares_available = company
-            .shares_available
-            .checked_add(add_shares)
-            .ok_or(DonatradeError::Overflow)?;
+        // Add shares (Encrypted into the pool)
+        let e_add_shares = as_euint128(
+            CpiContext::new(
+                inco_program.clone(),
+                Operation {
+                    signer: admin.clone(),
+                },
+            ),
+            add_shares as u128,
+        )?;
+
+        company.shares_available = e_add(
+            CpiContext::new(
+                inco_program.clone(),
+                Operation {
+                    signer: admin.clone(),
+                },
+            ),
+            company.shares_available,
+            e_add_shares,
+            0,
+        )?;
 
         company.active = active;
         Ok(())
     }
     pub fn transfer_shares<'info>(
         ctx: Context<'_, '_, '_, 'info, TransferShares<'info>>,
-        share_amount: u64,
+        e_shares: Euint128,
     ) -> Result<()> {
         let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
         let sender = ctx.accounts.sender.to_account_info();
 
-        let e_shares = as_euint128(
-            CpiContext::new(
-                inco_program.clone(),
-                Operation {
-                    signer: sender.clone(),
-                },
-            ),
-            share_amount as u128,
-        )?;
-
-        // Subtract from sender
+        // 1. Subtract from sender
         ctx.accounts.sender_position.encrypted_shares = e_sub(
             CpiContext::new(
                 inco_program.clone(),
@@ -479,7 +480,7 @@ pub mod donatrade_program {
             0,
         )?;
 
-        // Add to receiver
+        // 2. Add to receiver (init if needed is handled in Accounts)
         ctx.accounts.receiver_position.owner = ctx.accounts.receiver.key();
         ctx.accounts.receiver_position.company_id = ctx.accounts.sender_position.company_id;
         ctx.accounts.receiver_position.bump = ctx.bumps.receiver_position;
@@ -555,24 +556,13 @@ pub mod donatrade_program {
     pub fn create_offer<'info>(
         ctx: Context<'_, '_, '_, 'info, CreateOffer<'info>>,
         offer_id: u64,
-        share_amount: u64,
+        e_shares: Euint128,
         price_per_share: u64,
     ) -> Result<()> {
         let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
         let seller = ctx.accounts.seller.to_account_info();
 
-        // Convert share amount to encrypted
-        let e_shares = as_euint128(
-            CpiContext::new(
-                inco_program.clone(),
-                Operation {
-                    signer: seller.clone(),
-                },
-            ),
-            share_amount as u128,
-        )?;
-
-        // Subtract shares from seller's position (escrow them)
+        // 1. Subtract shares from seller's position (escrow them)
         ctx.accounts.seller_position.encrypted_shares = e_sub(
             CpiContext::new(
                 inco_program.clone(),
@@ -585,13 +575,12 @@ pub mod donatrade_program {
             0,
         )?;
 
-        // Initialize the offer account with escrowed shares
+        // 2. Initialize the offer account
         let offer = &mut ctx.accounts.offer_account;
         offer.offer_id = offer_id;
         offer.seller = ctx.accounts.seller.key();
         offer.company_id = ctx.accounts.company_account.company_id;
-        offer.share_amount = share_amount;
-        offer.escrowed_shares = e_shares; // Store the escrowed encrypted shares
+        offer.escrowed_shares = e_shares;
         offer.price_per_share = price_per_share;
         offer.is_active = true;
         offer.bump = ctx.bumps.offer_account;
@@ -605,23 +594,31 @@ pub mod donatrade_program {
         let offer = &mut ctx.accounts.offer_account;
         require!(offer.is_active, DonatradeError::Inactive);
 
-        let share_amount = offer.share_amount;
-        let cost = share_amount
-            .checked_mul(offer.price_per_share)
-            .ok_or(DonatradeError::Overflow)?;
-
         let inco_program = ctx.accounts.inco_lightning_program.to_account_info();
         let buyer_info = ctx.accounts.buyer.to_account_info();
 
-        // Convert cost to encrypted value
-        let e_cost = as_euint128(
+        // Calculate Cost (Price * Amount)
+        // Since price is plaintext and shares are encrypted, we lift price.
+        let e_price = as_euint128(
             CpiContext::new(
                 inco_program.clone(),
                 Operation {
                     signer: buyer_info.clone(),
                 },
             ),
-            cost as u128,
+            offer.price_per_share as u128,
+        )?;
+
+        let e_cost = e_mul(
+            CpiContext::new(
+                inco_program.clone(),
+                Operation {
+                    signer: buyer_info.clone(),
+                },
+            ),
+            e_price,
+            offer.escrowed_shares,
+            0,
         )?;
 
         // 1. Buyer pays Seller (subtract from buyer's vault)
@@ -695,11 +692,13 @@ pub struct ActivateCompany<'info> {
     #[account(
         init,
         payer = platform_admin,
-        space = 8 + 8 + 32 + 16 + 8 + 8 + 1 + 1, // 82 bytes (discriminator + u64 + pubkey + euint128 + u64 + u64 + bool + u8)
+        space = 8 + 8 + 32 + 16 + 8 + 8 + 1 + 1, // 82 bytes
         seeds = [b"company", company_id.to_le_bytes().as_ref()],
         bump
     )]
     pub company_account: Account<'info, CompanyAccount>,
+    #[account(address = INCO_LIGHTNING_ID)]
+    pub inco_lightning_program: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 

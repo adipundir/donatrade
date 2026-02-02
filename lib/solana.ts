@@ -14,7 +14,7 @@ export { BN, Program };
 
 // --- Constants ---
 // Program ID
-export const PROGRAM_ID = new PublicKey("8abuyq3xmQkNkGh7JGztMT1bvKr3CWpAw49bsyeMTWAT");
+export const PROGRAM_ID = new PublicKey("8Tn6H8J7VwE6G3asXS2L6AZcA4y6TMHTRjFZBMjMLvbX");
 
 // Inco Devnet Network settings - aligns with standard Solana Devnet
 export const INCO_NETWORK = "https://api.devnet.solana.com";
@@ -208,21 +208,18 @@ export function buildAuthorizeDecryptionTx(
         });
 }
 
-/**
- * Builds a buy shares instruction
- */
 export function buildBuySharesTx(
     program: Program<any>,
     investor: PublicKey,
     companyId: number,
     companyAccount: PublicKey,
-    shareAmount: bigint,
+    eSharesHandle: BN, // Encrypted handle from Inco SDK
     remainingAccounts: { pubkey: PublicKey; isWritable: boolean; isSigner: boolean; }[]
 ) {
     const [vault] = getInvestorVaultPDA(investor);
     const [position] = getPositionPDA(companyId, investor);
 
-    return (program.methods as any).buyShares(new BN(shareAmount.toString()))
+    return (program.methods as any).buyShares({ u128: eSharesHandle })
         .accounts({
             investor,
             investorVault: vault,
@@ -234,21 +231,18 @@ export function buildBuySharesTx(
         .remainingAccounts(remainingAccounts);
 }
 
-/**
- * Builds a sell shares instruction
- */
 export function buildSellSharesTx(
     program: Program<any>,
     investor: PublicKey,
     companyId: number,
     companyAccount: PublicKey,
-    shareAmount: bigint,
+    eSharesHandle: BN, // Encrypted handle from Inco SDK
     remainingAccounts: { pubkey: PublicKey; isWritable: boolean; isSigner: boolean; }[]
 ) {
     const [vault] = getInvestorVaultPDA(investor);
     const [position] = getPositionPDA(companyId, investor);
 
-    return (program.methods as any).sellShares(new BN(shareAmount.toString()))
+    return (program.methods as any).sellShares({ u128: eSharesHandle })
         .accounts({
             investor,
             investorVault: vault,
@@ -316,20 +310,17 @@ export function buildUpdateOfferingTx(
         });
 }
 
-/**
- * Builds a transfer shares instruction (P2P trading)
- */
 export function buildTransferSharesTx(
     program: Program<any>,
     sender: PublicKey,
     receiver: PublicKey,
     companyId: number,
-    shareAmount: bigint
+    eSharesHandle: BN
 ) {
     const [senderPosition] = getPositionPDA(companyId, sender);
     const [receiverPosition] = getPositionPDA(companyId, receiver);
 
-    return (program.methods as any).transferShares(new BN(shareAmount.toString()))
+    return (program.methods as any).transferShares({ u128: eSharesHandle })
         .accounts({
             sender,
             receiver,
@@ -371,25 +362,51 @@ export async function fetchInvestorVault(program: Program<any>, investor: Public
 /**
  * Fetches all positions for an investor (real on-chain data)
  */
-export async function fetchInvestorPositions(program: Program<any>, investor: PublicKey) {
-    // In a real app, we might use gPA with filters, but for simplified demo 
-    // we can fetch positions for specific companies or iterate.
-    // For now, let's fetch based on the MOCK_COMPANIES IDs to bridge the UI.
-    const positions = [];
-    const companyIds = [1, 2, 3, 4, 5]; // Match mock data IDs
+export async function fetchInvestorPositions(connection: Connection, investor: PublicKey) {
+    try {
+        const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
+            filters: [
+                {
+                    memcmp: {
+                        offset: 0,
+                        // PositionAccount discriminator: [60, 125, 250, 193, 181, 109, 238, 86]
+                        bytes: "PH36wbVt7lY=",
+                        encoding: "base64"
+                    }
+                },
+                {
+                    memcmp: {
+                        offset: 8, // Owner (32 bytes)
+                        bytes: investor.toBase58(),
+                        encoding: "base58"
+                    }
+                }
+            ]
+        });
 
-    for (const id of companyIds) {
-        const [positionPDA] = getPositionPDA(id, investor);
-        try {
-            const data = await (program.account as any).positionAccount.fetch(positionPDA);
-            if (data) {
-                positions.push({ ...data, companyId: id });
-            }
-        } catch (e) {
-            // Position doesn't exist for this company, skip
-        }
+        return accounts.map(acc => {
+            // Manual parsing of PositionAccount data buffer
+            // Skip discriminator (8)
+            const data = acc.account.data;
+            const owner = new PublicKey(data.slice(8, 40));
+            // company_id is u64 at offset 40 (8+32)
+            const companyId = new BN(data.slice(40, 48), 'le').toNumber();
+            // encrypted_shares is Euint128 (16 bytes) at offset 48 (40+8)
+            const encryptedShares = data.slice(48, 64);
+            const bump = data[64];
+
+            return {
+                owner,
+                companyId,
+                encryptedShares,
+                bump,
+                publicKey: acc.pubkey
+            };
+        });
+    } catch (e) {
+        console.error("Error fetching investor positions:", e);
+        return [];
     }
-    return positions;
 }
 
 /**
@@ -540,21 +557,24 @@ export function buildCreateOfferTx(
     seller: PublicKey,
     companyId: bigint,
     offerId: bigint,
-    shareAmount: bigint,
+    eSharesHandle: BN,
     pricePerShare: bigint
 ) {
     const [companyAccount] = getCompanyPDA(Number(companyId));
     const [offerAccount] = getOfferPDA(seller, offerId);
+    const [sellerPosition] = getPositionPDA(Number(companyId), seller);
 
     return (program.methods as any).createOffer(
         new BN(offerId.toString()),
-        new BN(shareAmount.toString()),
+        { u128: eSharesHandle },
         new BN(pricePerShare.toString())
     )
         .accounts({
             seller,
             companyAccount,
+            sellerPosition,
             offerAccount,
+            incoLightningProgram: INCO_LIGHTNING_ID,
             systemProgram: SystemProgram.programId,
         });
 }

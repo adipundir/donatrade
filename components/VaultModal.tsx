@@ -324,26 +324,6 @@ export const VaultModal: React.FC<VaultModalProps> = ({ isOpen, onClose }) => {
                         </button>
                     </div>
 
-                    {/* Verification Section */}
-                    {publicKey && (
-                        <div className="mt-4 pt-4 border-t-2 border-foreground/10 flex items-center justify-between">
-                            <div className="flex flex-col">
-                                <span className="text-[9px] font-bold uppercase text-secondary">Vault Address (PDA)</span>
-                                <span className="text-[10px] font-mono text-foreground/70">
-                                    {getInvestorVaultPDA(publicKey)[0].toBase58().slice(0, 12)}...
-                                </span>
-                            </div>
-                            <a
-                                href={`https://explorer.solana.com/address/${getInvestorVaultPDA(publicKey)[0].toBase58()}?cluster=devnet`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[9px] font-bold uppercase text-accent hover:underline flex items-center gap-1"
-                            >
-                                <Eye className="w-3 h-3" />
-                                Verify on Explorer
-                            </a>
-                        </div>
-                    )}
                 </div>
 
                 {/* Tabs */}

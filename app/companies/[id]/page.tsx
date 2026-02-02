@@ -28,8 +28,10 @@ import {
     buildBuySharesTx,
     buildSellSharesTx,
     buildTransferSharesTx,
-    BN
+    BN,
+    USDC_MINT
 } from '@/lib/solana';
+import { encryptValue } from '@/lib/inco';
 import { PublicKey } from "@solana/web3.js";
 import { useConnection } from '@solana/wallet-adapter-react';
 import { formatPricePerShare } from '@/lib/mockData';
@@ -150,7 +152,7 @@ export default function CompanyDetailPage() {
                 // Parallelize user data and on-chain company data refreshes
                 const [vaultData, posData, _] = await Promise.all([
                     fetchInvestorVault(program, investorPubkey),
-                    fetchInvestorPositions(program, investorPubkey),
+                    fetchInvestorPositions(connection, investorPubkey),
                     loadOnChainData() // Refresh company share availability
                 ]);
 
@@ -238,25 +240,27 @@ export default function CompanyDetailPage() {
             const program = getProgram(connection, wallet);
             if (!program) throw new Error("Program not initialized");
 
-            const shareAmount = BigInt(buyAmount);
             const companyPDA = getCompanyPDA(companyId)[0];
 
-            console.log("[DonaTrade] Buy Shares Request:", {
+            // 1. Encrypt the share amount locally
+            // This is the "Private Input" - the amount is never sent in plaintext
+            const eSharesHandle = await encryptValue(Number(buyAmount));
+            const shareHandleBN = new BN(eSharesHandle.toString());
+
+            console.log("[DonaTrade] Buy Shares Request (Encrypted):", {
                 investor: publicKey.toBase58(),
                 companyId,
-                amount: buyAmount,
+                handle: eSharesHandle.toString(),
                 companyPDA: companyPDA.toBase58()
             });
 
-            // Note: lightning_program remaining_accounts are handled internally by Inco Lightning
-            // if we are using the user's signature for authority.
             const tx = await buildBuySharesTx(
                 program,
                 publicKey,
                 companyId,
                 companyPDA,
-                shareAmount,
-                [] // No manual remaining accounts needed for standard buy
+                shareHandleBN,
+                []
             );
 
             const transaction = await tx.transaction();
@@ -304,13 +308,16 @@ export default function CompanyDetailPage() {
             const program = getProgram(connection, wallet);
             if (!program) throw new Error("Program not initialized");
 
-            const shareAmount = BigInt(transferAmount);
             const companyPDA = getCompanyPDA(companyId)[0];
 
-            console.log("[DonaTrade] Sell Shares Request:", {
+            // 1. Encrypt for Private Input
+            const eSharesHandle = await encryptValue(Number(transferAmount));
+            const shareHandleBN = new BN(eSharesHandle.toString());
+
+            console.log("[DonaTrade] Sell Shares Request (Encrypted):", {
                 investor: publicKey.toBase58(),
                 companyId,
-                amount: transferAmount
+                handle: eSharesHandle.toString()
             });
 
             const tx = await buildSellSharesTx(
@@ -318,7 +325,7 @@ export default function CompanyDetailPage() {
                 publicKey,
                 companyId,
                 companyPDA,
-                shareAmount,
+                shareHandleBN,
                 []
             );
 
@@ -357,10 +364,14 @@ export default function CompanyDetailPage() {
             const shareAmount = BigInt(transferAmount);
             const receiver = new PublicKey(transferRecipient);
 
-            console.log("[DonaTrade] Transfer Request:", {
+            // 1. Encrypt for Private Input
+            const eSharesHandle = await encryptValue(Number(transferAmount));
+            const shareHandleBN = new BN(eSharesHandle.toString());
+
+            console.log("[DonaTrade] Transfer Request (Encrypted):", {
                 from: publicKey.toBase58(),
                 to: transferRecipient,
-                amount: transferAmount
+                handle: eSharesHandle.toString()
             });
 
             const tx = await buildTransferSharesTx(
@@ -368,7 +379,7 @@ export default function CompanyDetailPage() {
                 publicKey,
                 receiver,
                 companyId,
-                shareAmount
+                shareHandleBN
             );
 
             const transaction = await tx.transaction();
@@ -626,35 +637,6 @@ export default function CompanyDetailPage() {
                                         </p>
                                     </div>
 
-                                    {/* Vault Balance Reveal for safety */}
-                                    <div className="flex items-center justify-between mt-4 mb-2">
-                                        <p className="text-xs uppercase font-bold tracking-wider opacity-60">Your Vault Balance</p>
-                                        <button
-                                            onClick={handleRevealBalance}
-                                            disabled={isRevealingBalance}
-                                            className="text-[10px] uppercase font-bold text-accent hover:underline flex items-center gap-1"
-                                        >
-                                            {isRevealingBalance ? (
-                                                <Loader2 className="w-3 h-3 animate-spin" />
-                                            ) : decryptedBalance !== null ? (
-                                                <>
-                                                    <EyeOff className="w-3 h-3" />
-                                                    Hide
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Eye className="w-3 h-3" />
-                                                    Reveal for safety
-                                                </>
-                                            )}
-                                        </button>
-                                    </div>
-                                    <div className="p-3 border-2 border-black bg-surface mb-6 flex items-center justify-between">
-                                        <span className="font-mono text-xl font-bold">
-                                            {decryptedBalance !== null ? (Number(decryptedBalance) / 1_000_000).toLocaleString() : '🔒 ••••••'}
-                                        </span>
-                                        <span className="text-xs font-bold opacity-70">cUSD</span>
-                                    </div>
                                     <button
                                         onClick={handleBuyShares}
                                         disabled={!buyAmount || txPending}

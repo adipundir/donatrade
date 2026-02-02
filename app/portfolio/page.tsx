@@ -14,6 +14,7 @@ import {
 } from '@/lib/solana';
 import { formatPricePerShare } from '@/lib/mockData';
 import { formatUSDC } from '@/lib/inco';
+import { getCompanies } from '@/lib/actions/companies';
 import { useVaultModal } from '@/components/VaultProvider';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { useEffect } from 'react';
@@ -50,19 +51,24 @@ export default function PortfolioPage() {
             if (program) {
                 const [v, p] = await Promise.all([
                     fetchInvestorVault(program, publicKey),
-                    fetchInvestorPositions(program, publicKey)
+                    fetchInvestorPositions(connection, publicKey)
                 ]);
                 setRawVault(v);
 
-                // Map positions to include company details from mock data (names, sectors)
-                // Map positions
+                // Fetch real company data from DB to match with positions
+                const companyResult = await getCompanies('active');
+                const dbCompanies = companyResult.success ? companyResult.companies : [];
+
+                // Map positions to include real company details from DB
                 const enrichedPositions = p.map(pos => {
+                    const dbComp = dbCompanies.find((c: any) => Number(c.id) === Number(pos.companyId));
                     return {
                         ...pos,
                         company: {
-                            name: `Private Company #${pos.companyId}`,
-                            sector: 'Private Sector',
-                            description: 'Confidential'
+                            name: dbComp?.name || `Private Company #${pos.companyId}`,
+                            sector: dbComp?.sector || 'Private Sector',
+                            description: dbComp?.description || 'Confidential',
+                            pricePerShare: dbComp?.pricePerShare || 0
                         }
                     };
                 });
@@ -208,24 +214,24 @@ export default function PortfolioPage() {
                     </div>
 
                     {/* Portfolio Value Card */}
-                    <div className="card">
+                    <div className="card relative overflow-hidden group">
                         <div className="flex items-center justify-between mb-4">
                             <div className="flex items-center gap-2">
                                 <TrendingUp className="w-5 h-5 text-accent" />
                                 <h2 className="text-lg font-bold">Portfolio Value</h2>
                             </div>
-                            <div className="p-2 opacity-50">
-                                <Lock className="w-4 h-4" />
+                        </div>
+                        <div className="relative">
+                            <div className="flex items-center gap-3 mb-2">
+                                <span className="text-3xl font-bold text-accent" style={{ fontFamily: "'Bangers', cursive" }}>
+                                    COMING SOON
+                                </span>
+                                <Lock className="w-6 h-6 text-secondary opacity-50" />
                             </div>
+                            <p className="text-xs text-secondary" style={{ fontFamily: "'Comic Neue', cursive" }}>
+                                Confidential valuation engine pending activation!
+                            </p>
                         </div>
-                        <div className="flex items-baseline gap-2 mb-2">
-                            <span className="text-3xl font-bold text-muted">
-                                🔒 CONFIDENTIAL
-                            </span>
-                        </div>
-                        <p className="text-xs text-secondary" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                            Across {positions.length} active position{positions.length !== 1 ? 's' : ''}
-                        </p>
                     </div>
                 </div>
 
@@ -271,20 +277,8 @@ export default function PortfolioPage() {
                             >
                                 <div className="flex items-start justify-between mb-4">
                                     <div className="flex items-center gap-3">
-                                        <div className="w-12 h-12 border-3 border-black flex items-center justify-center bg-accent-light">
-                                            <Building2 className="w-6 h-6" />
-                                        </div>
                                         <div>
-                                            <h3 className="text-xl">{position.company.name}</h3>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-xs text-secondary uppercase" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                                                    {position.company.sector}
-                                                </span>
-                                                <span className="text-xs text-secondary">•</span>
-                                                <span className="text-xs text-secondary" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                                                    {formatPricePerShare(position.company.pricePerShare)}/share
-                                                </span>
-                                            </div>
+                                            <h3 className="text-2xl" style={{ fontFamily: "'Bangers', cursive" }}>{position.company.name}</h3>
                                         </div>
                                     </div>
                                     <Link
@@ -311,10 +305,7 @@ export default function PortfolioPage() {
                                     </div>
                                 </div>
 
-                                <div className="mt-4 pt-4 border-t-2 border-black flex justify-between items-center">
-                                    <span className="text-xs text-muted uppercase">
-                                        Status: {position.active ? '✓ Active' : '✗ Closed'}
-                                    </span>
+                                <div className="mt-4 pt-4 border-t-2 border-black flex justify-end items-center">
                                     <div className="flex gap-2">
                                         <button className="btn btn-ghost text-sm py-1 px-3">
                                             Sell Shares

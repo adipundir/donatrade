@@ -59,7 +59,7 @@ export default function TradePage() {
         if (!publicKey) return;
         const program = getProgram(connection, wallet);
         if (program) {
-            const pos = await fetchInvestorPositions(program, publicKey);
+            const pos = await fetchInvestorPositions(connection, publicKey);
             setMyPositions(pos);
         }
     };

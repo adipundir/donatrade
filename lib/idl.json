@@ -1,5 +1,5 @@
 {
-  "address": "8abuyq3xmQkNkGh7JGztMT1bvKr3CWpAw49bsyeMTWAT",
+  "address": "8Tn6H8J7VwE6G3asXS2L6AZcA4y6TMHTRjFZBMjMLvbX",
   "metadata": {
     "name": "donatrade_program",
     "version": "0.1.0",
@@ -52,6 +52,10 @@
               }
             ]
           }
+        },
+        {
+          "name": "inco_lightning_program",
+          "address": "5sjEbPiqgZrYwR31ahR6Uk9wf5awoX61YGg7jExQSwaj"
         },
         {
           "name": "system_program",
@@ -203,8 +207,12 @@
       ],
       "args": [
         {
-          "name": "share_amount",
-          "type": "u64"
+          "name": "e_shares",
+          "type": {
+            "defined": {
+              "name": "Euint128"
+            }
+          }
         }
       ]
     },
@@ -300,8 +308,12 @@
           "type": "u64"
         },
         {
-          "name": "share_amount",
-          "type": "u64"
+          "name": "e_shares",
+          "type": {
+            "defined": {
+              "name": "Euint128"
+            }
+          }
         },
         {
           "name": "price_per_share",
@@ -598,8 +610,12 @@
       ],
       "args": [
         {
-          "name": "share_amount",
-          "type": "u64"
+          "name": "e_shares",
+          "type": {
+            "defined": {
+              "name": "Euint128"
+            }
+          }
         }
       ]
     },
@@ -695,8 +711,12 @@
       ],
       "args": [
         {
-          "name": "share_amount",
-          "type": "u64"
+          "name": "e_shares",
+          "type": {
+            "defined": {
+              "name": "Euint128"
+            }
+          }
         }
       ]
     },
@@ -1081,7 +1101,11 @@
           },
           {
             "name": "shares_available",
-            "type": "u64"
+            "type": {
+              "defined": {
+                "name": "Euint128"
+              }
+            }
           },
           {
             "name": "price_per_share",
