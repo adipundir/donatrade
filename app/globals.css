@@ -85,7 +85,7 @@ h2,
 h3,
 .comic-title {
     font-family: 'Bangers', cursive;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.05em;
 }
 
 /* Comic-style card with bold borders */
@@ -120,7 +120,7 @@ h3,
     border-radius: 0;
     font-family: 'Bangers', cursive;
     font-weight: 400;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.05em;
     font-size: 1rem;
     transition: all 0.15s ease;
     cursor: pointer;
@@ -214,7 +214,7 @@ input[type=number] {
     border-radius: 0;
     font-size: 0.75rem;
     font-family: 'Bangers', cursive;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
 }
 
@@ -278,7 +278,7 @@ input[type=number] {
     border: 3px solid var(--surface-border) !important;
     border-radius: 0 !important;
     font-family: 'Bangers', cursive !important;
-    letter-spacing: 0.1em !important;
+    letter-spacing: 0.05em !important;
     text-transform: uppercase !important;
     box-shadow: 3px 3px 0 var(--surface-border) !important;
 }
@@ -430,11 +430,11 @@ input[type=number] {
 
 /* Global override for inline styles using Bangers */
 [style*="Bangers"] {
-    letter-spacing: 0.1em !important;
+    letter-spacing: 0.05em !important;
 }
 
 /* Utility class for Bangers font */
 .font-bangers {
     font-family: 'Bangers', cursive;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.05em;
 }
