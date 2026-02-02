@@ -67,9 +67,9 @@ export default function LandingPage() {
             </h1>
 
             <p className="text-lg md:text-xl text-secondary mb-10 animate-pop stagger-2 max-w-2xl mx-auto" style={{ fontFamily: "'Comic Neue', cursive" }}>
-              Invest in private companies <strong>with total privacy.</strong>
+              Invest in private companies <strong>privately</strong> and <strong>exit anytime.</strong>
               <br className="hidden md:block" />
-              Access secondary markets and <strong>exit your positions anytime</strong> with real-time settlement.
+              Access secondary markets with real-time settlement.
             </p>
 
             <div className="animate-pop stagger-3">
