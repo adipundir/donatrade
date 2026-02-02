@@ -282,9 +282,7 @@ export default function LandingPage() {
                   <Github className="w-5 h-5" />
                 </a>
               </div>
-              <p className="text-xs text-muted" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                Built for Solana Devnet
-              </p>
+
             </div>
           </div>
 
