@@ -287,6 +287,18 @@ input[type=number] {
     box-shadow: 3px 3px 0 var(--surface-border) !important;
 }
 
+.wallet-adapter-button-start-icon {
+    margin-right: 8px !important;
+}
+
+.wallet-adapter-button-icon {
+    margin-right: 8px !important;
+}
+
+.wallet-adapter-button i {
+    margin-right: 8px !important;
+}
+
 .wallet-adapter-button:hover {
     background: var(--accent-hover) !important;
     transform: translate(-1px, -1px) !important;
