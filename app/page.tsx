@@ -119,8 +119,9 @@ export default function LandingPage() {
               </div>
               <h3 className="text-xl mb-2 text-foreground">Trustworthy Investing</h3>
               <p className="text-foreground opacity-90" style={{ fontFamily: "'Comic Neue', cursive" }}>
-                Unlike other platforms, every investment is verified on-chain with legal agreement hashes.
-                Transparent pricing, encrypted holdings, and verifiable compliance. Investing you can trust!
+                Every investment is backed by a legal agreement designed to protect investors
+                against bad actors. Transparent pricing, encrypted holdings, and verifiable
+                compliance. Investing you can trust!
               </p>
             </div>
           </div>
